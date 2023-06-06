@@ -248,4 +248,59 @@ def radio_luminosity(scales):
         brighter_mass.append(lumfit['Mx'])
         brighter_sigmass.append(lumfit['sigMx'])
 
+def lotss_selected_xcorr(rpscales, theta_scales):
+    from SkyTools import fluxutils
+    from mocpy import MOC
+    import pymangle
+    import astropy.units as u
+    eboss_zbins = [0.8, 1.5, 2.2]
+    radiosfr_thresh = 1000  # Msun/yr
+    best23_ridgeline_lum = 22.24 + 1.08*np.log10(radiosfr_thresh)
+
+    qso, rand = sample.qsocat(eboss=True, boss=False)
+
+    lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2.fits')
+    lotss_class = Table.read('../data/radio_cats/LoTSS_deep/classified/raw/bootes_classifications_dr1.fits')
+    lotss_class = lotss_class[np.where((lotss_class['z_best'] > 0) & (lotss_class['z_best'] < 5))]
+
+    ebossmoc = pymangle.Mangle('../data/footprints/eBOSS/eBOSS_QSOandLRG_fullfootprintgeometry_noveto.ply')
+    lotss = lotss[np.where(ebossmoc.contains(lotss['RA'], lotss['DEC']))]
+    lotss['weight'] = np.ones(len(lotss))
+
+    lotssmoc = MOC.from_fits('../data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
+    qso = qso[np.where(lotssmoc.contains(qso['RA'] * u.deg, qso['DEC'] * u.deg))]
+    rand = rand[np.where(lotssmoc.contains(rand['RA'] * u.deg, rand['DEC'] * u.deg))]
+
+    xcfs = []
+    for j in range(len(eboss_zbins)-1):
+        minz, maxz = eboss_zbins[j], eboss_zbins[j+1]
+        qsoz = qso[np.where((qso['Z'] > minz) & (qso['Z'] < maxz))]
+        randz = rand[np.where((rand['Z'] > minz) & (rand['Z'] < maxz))]
+
+        fluxthresh = fluxutils.flux_at_obsnu_from_rest_lum(10**best23_ridgeline_lum, -0.8,
+                                                                .144, .144, minz, energy=False) / 1000.
+        print('Flux cut for z>%s is S_144=%s mJy' % (minz, round(fluxthresh, 2)))
+
+        lotss_bright = lotss[np.where(lotss['Total_flux'] > fluxthresh)]
+
+        lotss_class_cut = lotss_class[np.where(lotss_class['S_150MHz'] > fluxthresh / 1000.)]
+        lotss_class_cut = lotss_class_cut[np.where((lotss_class_cut['z_best'] > 0) & (lotss_class_cut['z_best'] < 5))]
+
+        dndz_lotss = redshift_helper.dndz_from_z_list(lotss_class_cut['z_best'], 30, zrange=(0.1, 5.))
+
+        autofit, autocf = pipeline.measure_and_fit_autocf(scales=rpscales, datcat=qsoz, randcat=randz, nbootstrap=500)
+
+        dndz_qso_matched = redshift_helper.dndz_from_z_list(qsoz['Z'], 30, zrange=(0.1, 5))
+
+        qsoz.remove_column('CHI'), randz.remove_column('CHI')
+
+        xcf = twoPointCFs.crosscorr_cats(scales=theta_scales, datcat1=qsoz, datcat2=lotss_bright, randcat1=randz, nbootstrap=500, estimator='Peebles')
+        xcfs.append(xcf)
+
+    return xcfs
+
+
+
+
+
 

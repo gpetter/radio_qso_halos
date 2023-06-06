@@ -17,7 +17,6 @@ def highres_lotss_dr2_noise_map(outputmap_nside=4096):
     rmsmap = np.zeros(hp.nside2npix(outputmap_nside))
 
     t = Table.read(curdr + '/selection/lotss_dr2_mosaic_ids.fits')
-    ids = []
 
     try:
         for j in range(len(t)):

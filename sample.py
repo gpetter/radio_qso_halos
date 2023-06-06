@@ -152,8 +152,8 @@ def radio_match(qsosample, radio_names, sep, alpha_fid=-0.8):
 				qsocat['L_1400'] = np.log10(fluxutils.luminosity_at_rest_nu(qsocat['F_1400'], alpha=alpha_fid,
 																				  nu_obs=1.4, nu_rest_want=1.4,
 																				  z=qsocat['Z'], flux_unit=u.mJy))
-				freq1, freq2 = freq_dict['LOTSS_DR2'], freq_dict['FIRST']
-				qsocat['alpha_%s_%s' % (freq1, freq2)] = np.log10(qsocat['F_%s' % freq2] / qsocat['F_%s' % freq1]) / np.log10(float(freq2)/float(freq1))
+				#freq1, freq2 = freq_dict['LOTSS_DR2'], freq_dict['FIRST']
+				#qsocat['alpha_%s_%s' % (freq1, freq2)] = np.log10(qsocat['F_%s' % freq2] / qsocat['F_%s' % freq1]) / np.log10(float(freq2)/float(freq1))
 			if radio_name == 'VLASS':
 				#qsocat['L_3000_fid'] = np.log10(3.e9 * (qsocat['F_VLASS'] * u.mJy * 4 * np.pi * (lum_dists * (1 + qsocat['Z']) ** (-(alpha_fid + 1) / 2.)) ** 2).to(u.erg).value)
 				#s_1400_vlass = qsocat['F_VLASS'] * (1400./3000.) ** alpha_fid
@@ -165,9 +165,14 @@ def radio_match(qsosample, radio_names, sep, alpha_fid=-0.8):
 																				  nu_obs=3., nu_rest_want=1.4,
 																				  z=qsocat['Z'], flux_unit=u.mJy))
 
-		if i == 1:
-			freq1, freq2 = freq_dict[radio_names[0]], freq_dict[radio_names[1]]
-			qsocat['alpha_%s_%s' % (freq1, freq2)] = np.log10(qsocat['F_%s' % freq2] / qsocat['F_%s' % freq1]) / np.log10(float(freq2)/float(freq1))
+		if i > 0:
+			freq1, freq2 = freq_dict[radio_names[0]], freq_dict[radio_names[i]]
+			qsocat['alpha_%s_%s' % (freq1, freq2)] = np.full(len(qsocat), np.nan)
+			atleast1detection = np.where((qsocat['det_%s' % freq1] == 1) | (qsocat['det_%s' % freq2] == 1))
+			qsocat['alpha_%s_%s' % (freq1, freq2)][atleast1detection] = \
+					np.log10(qsocat['F_%s' % freq2][atleast1detection] /
+					qsocat['F_%s' % freq1][atleast1detection]) / \
+					np.log10(float(freq2)/float(freq1))
 
 
 
