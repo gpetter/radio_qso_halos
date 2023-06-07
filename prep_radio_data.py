@@ -149,3 +149,8 @@ def construct_clean_vlass(flux_cut=0, apply_mask=False):
         epoch2 = epoch2[inmask]
 
         epoch2.write('catalogs/VLASS/combined_masked.fits', overwrite=True)
+
+def lotss_photo_zs():
+    lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2.fits')
+    lotss = coordhelper.match2duncan(lotss, sep=5.)
+    lotss.write('catalogs/LoTSS_DR2_photz.fits', overwrite=True)

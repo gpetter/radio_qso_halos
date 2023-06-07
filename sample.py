@@ -142,6 +142,10 @@ def radio_match(qsosample, radio_names, sep, alpha_fid=-0.8):
 				qsocat['L_144'] = np.log10(fluxutils.luminosity_at_rest_nu(qsocat['F_144'], alpha=alpha_fid,
 																  nu_obs=.144, nu_rest_want=.144,
 																  z=qsocat['Z'], flux_unit=u.mJy))
+
+				qsocat['SFR_lotss'] = fluxutils.best23_lum150_2sfr(np.log10(fluxutils.luminosity_at_rest_nu(qsocat['F_144'], alpha=alpha_fid,
+																  nu_obs=.144, nu_rest_want=.144,
+																  z=qsocat['Z'], flux_unit=u.mJy, energy=False)))
 				qsocat['L_1400_lotss'] = np.log10(fluxutils.luminosity_at_rest_nu(qsocat['F_144'], alpha=alpha_fid,
 																  nu_obs=.144, nu_rest_want=1.4,
 																  z=qsocat['Z'], flux_unit=u.mJy))
