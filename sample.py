@@ -28,6 +28,13 @@ def lofar_resolved(catalog):
 	catalog['Resolved'][np.where(resolved)] = 1.
 	return catalog
 
+def lotss_dr2resolved(catalog):
+	catalog['Resolved'] = np.zeros(len(catalog))
+	resolved = np.log(catalog['F_144'] / catalog['PeakF_144']) > 0.42 + (1.08 /
+									(1 + ((catalog['F_144'] / catalog['Ferr_144'])/96.57) ** 2.49))
+	catalog['Resolved'][resolved] = 1.
+	return catalog
+
 def physical_size(angsizes, zs):
 	from colossus.cosmology import cosmology
 	cosmo = cosmology.setCosmology('planck18')
@@ -36,7 +43,24 @@ def physical_size(angsizes, zs):
 	phys_sizes = (angsizes * u.arcsec).to(u.rad) * ang_diam_dists
 	return phys_sizes
 
+def in_lotss_dr2(ras, decs):
+	moc = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
+	good_idxs = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
+	return good_idxs
 
+def in_eboss(ras, decs):
+	import pymangle
+	ebossmoc = pymangle.Mangle('../data/footprints/eBOSS/eBOSS_QSOandLRG_fullfootprintgeometry_noveto.ply')
+	good_idxs = ebossmoc.contains(ras, decs)
+	return good_idxs
+
+def in_vlass_epoch2(ras, decs):
+	moc1 = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/footprints/VLASS/vlass_2.1.moc.fits')
+	moc2 = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/footprints/VLASS/vlass_2.2.moc.fits')
+
+	good_idxs = moc1.contains(np.array(ras) * u.deg, np.array(decs) * u.deg) | \
+				moc2.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
+	return good_idxs
 
 def mask_sample(coords, radio_names):
 
@@ -55,14 +79,14 @@ def mask_sample(coords, radio_names):
 
 	if 'LOTSS_DR2' in radio_names:
 		moc = MOC.from_fits('../data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
-		good_idxs = moc.contains(ras * u.deg, decs * u.deg)
+		good_idxs = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
 		#qsocat = qsocat[np.where(in_mocs)]
 		#rmsmask = hp.read_map('masks/LOTSS_DR2_noise_mask.fits')
 		#goodrms = rmsmask[hp.ang2pix(hp.npix2nside(len(rmsmask)), ras, decs, lonlat=True)]
 	
 	if 'LoLSS_DR1' in radio_names:
 		moc = MOC.from_fits('../data/radio_cats/LoLSS_DR1/Moc.fits')
-		good_idxs = moc.contains(ras * u.deg, decs * u.deg)
+		good_idxs = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
 	#qsocat = qsocat[np.where(in_mocs)]
 	#rmsmask = hp.read_map('masks/LOTSS_DR2_noise_mask.fits')
 	#goodrms = rmsmask[hp.ang2pix(hp.npix2nside(len(rmsmask)), ras, decs, lonlat=True)]
@@ -114,8 +138,8 @@ def radio_match(qsosample, radio_names, sep, alpha_fid=-0.8):
 																radio_name)
 
 
-		qsoidx, radidx = coordhelper.match_coords((qsocat['RA'], qsocat['DEC']),
-												  (radiocat['RA'], radiocat['DEC']), sep)
+		radidx, qsoidx = coordhelper.match_coords((radiocat['RA'], radiocat['DEC']), (qsocat['RA'], qsocat['DEC']),
+									sep, symmetric=False)
 		
 		qsocat['det_%s' % radio_freq][qsoidx] = 1.
 		qsocat['det_%s' % radio_freq][np.logical_not(in_footprint)] = -1.
@@ -123,6 +147,13 @@ def radio_match(qsosample, radio_names, sep, alpha_fid=-0.8):
 		qsocat['F_%s' % radio_freq][qsoidx] = radiocat['Total_flux'][radidx] * tot_corr
 		qsocat['Ferr_%s' % radio_freq][qsoidx] = radiocat['E_Total_flux'][radidx] * tot_corr
 		qsocat['angsize_%s' % radio_freq][qsoidx] = radiocat['Maj'][radidx]
+		if radio_name.startswith('LOTSS'):
+			# lofar_resolved(qsocat)
+			qsocat['PeakF_%s' % freq_dict[radio_name]] = np.full(len(qsocat), np.nan)
+			qsocat['PeakFerr_%s' % freq_dict[radio_name]] = np.full(len(qsocat), np.nan)
+			qsocat['PeakF_%s' % radio_freq][qsoidx] = radiocat['Peak_flux'][radidx]
+			qsocat['PeakFerr_%s' % radio_freq][qsoidx] = radiocat['E_Peak_flux'][radidx]
+			qsocat = lotss_dr2resolved(qsocat)
 
 		if 'Z' in qsocat.colnames:
 
@@ -134,7 +165,8 @@ def radio_match(qsosample, radio_names, sep, alpha_fid=-0.8):
 				qsocat['PeakFerr_%s' % radio_freq][qsoidx] = radiocat['E_Peak_flux'][radidx]
 				qsocat['Phys_size_144'] = np.full(len(qsocat), np.nan)
 				qsocat['Phys_size_144'][qsoidx] = physical_size(qsocat['angsize_144'][qsoidx], qsocat['Z'][qsoidx])
-				qsocat = lofar_resolved(qsocat)
+				#qsocat = lofar_resolved(qsocat)
+				qsocat = lotss_dr2resolved(qsocat)
 
 				#qsocat['L_144'] = np.log10(150. * 10**6 * (qsocat['F_LOTSS_DR2'] * u.mJy * 4 * np.pi * (lum_dists * (1 + qsocat['Z']) ** (-(alpha_fid + 1) / 2.)) ** 2).to(u.erg).value)
 				#s_1400_lotss = qsocat['F_LOTSS_DR2'] * (1400./150.) ** alpha_fid
@@ -257,6 +289,22 @@ def mask_randoms(sample='eBOSS', nrand2ndata=15):
 
 	rands.write('catalogs/masked/%s_randoms.fits' % sample, overwrite=True)
 
+def overlap_weights_1d(prop_arr, prop_range, nbins):
+	hists = []
+	for j in range(len(prop_arr)):
+		hist, binedges = np.histogram(prop_arr[j], bins=nbins, range=prop_range, density=True)
+		hists.append(hist)
+	hists = np.array(hists)
+	min_hist = np.amin(hists, axis=0)
+	weights = []
+	for j in range(len(prop_arr)):
+		dist_ratio = min_hist / hists[j]
+		dist_ratio[np.where(np.isnan(dist_ratio) | np.isinf(dist_ratio))] = 0
+		weights.append(dist_ratio[np.digitize(prop_arr[j], bins=binedges)-1])
+	return weights
+
+
+
 def overlap_weights_2d(prop1_arr, prop2_arr, prop1_range, prop2_range, nbins):
 	from scipy import stats, interpolate
 	hists, bin_locs = [], []
@@ -376,3 +424,121 @@ def qsocat(eboss=True, boss=False):
 		rand = Table.read('catalogs/masked/BOSS_QSO_randoms.fits')
 	return dat, rand
 
+def desiqso():
+	dat = Table.read('catalogs/masked/desiQSO_edr.fits')
+	rand = Table.read('catalogs/masked/desiQSO_edr_randoms.fits')
+	return dat, rand
+
+def lotss_rg_sample(fcut=2., sep_cw=5, sep_2mass=5, w1cut=17, colorcut=0.6, jcut=16, w1faint=18, maxflux=1000, majmax=60):
+	from SkyTools import fluxutils
+	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
+	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
+	lotss = lotss[np.where(lotss['Maj'] < majmax)]
+	lotss = lotss[np.where((lotss['Jmag'].mask == True) | (np.array(lotss['Jmag'], dtype=float) > jcut) | (lotss['sep_2mass'] > sep_2mass))]
+	# detected in WISE to avoid lobes
+	lotss = lotss[np.where((lotss['sep_cw'] < sep_cw))]
+
+	lotss = lotss[np.where(((lotss['W1_cw'] - lotss['W2_cw']) > (5.25 - 0.3 * lotss['W2_cw'])))]
+
+	#lotss = lotss[np.where( (lotss['W1_cw'] - lotss['W2_cw'] > colorcut) | (lotss['W1_cw'] > w1cut) |
+	# (lotss['W1_cw'].mask == True) | (lotss['W2_cw'].mask == True))]
+	lotss['r75'] = np.array(fluxutils.r75_assef(lotss['W1_cw'], lotss['W2_cw']), dtype=int)
+	lotss['r90'] = np.array(fluxutils.r90_assef(lotss['W1_cw'], lotss['W2_cw']), dtype=int)
+	lotss = lotss[lotss['Total_flux'] > fcut]
+	return lotss
+
+
+
+def redshift_dist(cat, sep):
+	bootes = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
+	bootidx, catidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (cat['RA'], cat['DEC']),
+											   max_sep=sep, symmetric=False)
+	bootes = bootes[bootidx]
+	bootes = bootes[np.where(bootes['z_best'] < 4)]
+	zs = bootes['z_best']
+	#speczs = bootes['Z'][np.where(bootes['Z'] > 0)]
+	return zs
+
+
+def wisediagram():
+	import matplotlib.pyplot as plt
+	from SkyTools import coordhelper
+	from astropy.table import vstack, hstack
+	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
+	lotss = lotss[np.where(lotss['Total_flux'] > 2.)]
+	lotss = lotss[np.where(lotss['sep_cw'] < 5.)]
+	bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
+	bootidx, lotidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (lotss['RA'], lotss['DEC']), 5.,
+											   symmetric=False)
+	lotss = lotss[lotidx]
+	bootes = bootes[bootidx]
+
+	comb = hstack([lotss, bootes])
+
+	lowz = comb[np.where(comb['z_best'] < 0.5)]
+	star = comb[np.where(comb['Overall_class'] == 'SFG')]
+	midz = comb[np.where((comb['z_best'] > 0.5) & (comb['z_best'] < 1.))]
+	hiz = comb[np.where(comb['z_best'] > 1)]
+
+	plotdir = '/home/graysonpetter/Dropbox/radioplots/'
+	plt.scatter(lowz['W2_cw'], lowz['W1_cw'] - lowz['W2_cw'], s=20, c='cornflowerblue', marker='o')
+
+	plt.scatter(midz['W2_cw'], midz['W1_cw'] - midz['W2_cw'], s=20, c='orange', marker='o')
+	plt.scatter(hiz['W2_cw'], hiz['W1_cw'] - hiz['W2_cw'], s=20, c='firebrick', marker='o')
+	plt.scatter(star['W2_cw'], star['W1_cw'] - star['W2_cw'], s=10, c='blue', marker='*')
+	plt.scatter(0, 0, s=100, c='b', marker='*', label="SF-only")
+	plt.plot(np.linspace(10, 13.86, 5), 0.65 * np.ones(5), ls='--', c='k')
+	plt.plot(np.linspace(13.86, 20, 100), 0.65 * np.exp(0.153 * np.square(np.linspace(13.86, 20, 100) - 13.86)), c='k',
+			 ls='--')
+	plt.ylim(-0.5, 2)
+	plt.text(15.2, 1.8, 'R90 AGN', fontsize=15)
+	plt.text(12.2, 0.4, r'$z < 0.5$', color='cornflowerblue', fontsize=20)
+	plt.text(14.5, -0.3, r'$0.5 < z < 1$', color='orange', fontsize=20)
+	plt.text(17.5, 1.6, r'$z > 1$', color='firebrick', fontsize=20)
+	plt.xlim(12, 18.5)
+	plt.plot(np.linspace(10, 20, 100), (5.25 - 0.3 * np.linspace(10, 20, 100)), c='grey', ls='--')
+	plt.xlabel('W2')
+	plt.ylabel(r'W1 $-$ W2')
+	plt.legend()
+	plt.title(r'$S_{150 \ \mathrm{MHz}} >$ 2 mJy')
+	plt.savefig(plotdir + 'wise_diagram.pdf')
+	plt.close('all')
+
+def hostgals():
+	import matplotlib.pyplot as plt
+	lotz = lotss_rg_sample()
+	from SkyTools import coordhelper
+	bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
+	bootes = bootes[np.where(bootes['z_best'] < 4)]
+	bootidx, lotidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (lotz['RA'], lotz['DEC']), 5.,
+											   symmetric=False)
+	bootes = bootes[bootidx]
+
+	bootes = bootes[np.where((bootes['SFR_cons'] > -3) & (bootes['Mass_cons'] > 0))]
+
+	herg = bootes[np.where(bootes['Overall_class'] == "HERG")]
+	lerg = bootes[np.where(bootes['Overall_class'] == "LERG")]
+	sfg = bootes[np.where(bootes['Overall_class'] == "SFG")]
+	agn = bootes[np.where(bootes['Overall_class'] == "RQAGN")]
+
+	from halomodelpy import params
+	pob = params.param_obj()
+	cos = pob.apcosmo
+
+	plotdir = '/home/graysonpetter/Dropbox/radioplots/'
+	s = 15
+	plt.scatter(herg['z_best'], herg['SFR_cons'] - herg['Mass_cons'], s=s, c='none', label='HERG', edgecolors='orange')
+	plt.scatter(lerg['z_best'], lerg['SFR_cons'] - lerg['Mass_cons'], s=s, c='none', label='LERG',
+				edgecolors='firebrick')
+	plt.scatter(sfg['z_best'], sfg['SFR_cons'] - sfg['Mass_cons'], s=s, c='none', label='SFG', marker='*',
+				edgecolors='cornflowerblue')
+	plt.scatter(agn['z_best'], agn['SFR_cons'] - agn['Mass_cons'], s=s, c='none', label='RQAGN', marker='s',
+				edgecolors='green')
+	plt.plot(np.linspace(0, 4, 100), np.log10(.2 / cos.age(np.linspace(0, 4, 100)).to('yr').value), c='k', ls='--')
+	plt.arrow(3, np.log10(.2 / cos.age(3).to('yr').value), 0, -.2, head_width=.1, color='k')
+	plt.text(2.5, -10.6, 'Quenched', fontsize=15)
+	plt.ylabel('log sSFR (yr$^{-1}$)')
+	plt.legend(fontsize=10)
+	plt.xlabel('Redshift')
+	plt.savefig(plotdir + 'sSFR.pdf')
+	plt.close('all')

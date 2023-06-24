@@ -150,6 +150,15 @@ def construct_clean_vlass(flux_cut=0, apply_mask=False):
 
         epoch2.write('catalogs/VLASS/combined_masked.fits', overwrite=True)
 
+def vlass_ep2():
+    epoch2 = Table.read('../data/radio_cats/VLASS/Epoch2_QL_cw_2mass.fits')
+    # 3 sigma 120 muJy
+    epoch2 = epoch2[np.where(epoch2['Total_flux'] > 0.360)]
+    epoch2 = epoch2[
+        np.where((epoch2['Duplicate_flag'] < 2) & ((epoch2['Quality_flag'] == 0) | (epoch2['Quality_flag'] == 4)))]
+    epoch2 = epoch2['RA', 'DEC', 'Total_flux', 'E_Total_flux', 'Peak_flux', 'E_Peak_flux', 'Maj', 'W1_cw', 'W2_cw', 'sep_cw', 'Jmag', 'sep_2mass']
+    epoch2.write('catalogs/VLASS/VLASS.fits', overwrite=True)
+
 def lotss_photo_zs():
     lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2.fits')
     lotss = coordhelper.match2duncan(lotss, sep=5.)

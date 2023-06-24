@@ -1,12 +1,13 @@
 from corrfunc_helper import twoPointCFs
-from halomodelpy import clustering_fit, redshift_helper, pipeline, hm_calcs
+from halomodelpy import clustering_fit, redshift_helper, pipeline, hm_calcs, lensing_fit
 import numpy as np
 import sample
-from SkyTools import catalog_utils
+from SkyTools import catalog_utils, coordhelper
 from astropy.table import Table
 from plotscripts import mass_v_prop
 import pickle
 
+plotdir = '/home/graysonpetter/Dropbox/radioplots/'
 def eboss_qso_autocf(scales):
     qso, rand = sample.qsocat(eboss=True, boss=False)
     fitpars, autocf = pipeline.measure_and_fit_autocf(scales, qso, rand)
@@ -183,15 +184,21 @@ def extended_jets(scales):
     autocf = retrieve_eboss_autocf()
     cffit = clustering_fit.fit_pipeline(redshift_helper.dndz_from_z_list(qso['Z'], 15), autocf)
     ms, merrs, sizes = [cffit['M']], [cffit['sigM']], [2.]
-    fcuts = [1.1, 5.]
-    for j in range(len(fcuts)):
+    unmass, unmasserrs = [], []
+    fcuts = [0.9, 10., 10000.]
+    for j in range(len(fcuts)-1):
 
-        ext = qso[np.where((qso['angsize_144'] > 15) & (qso['F_144'] > fcuts[j]))]
+        ext = qso[np.where((qso['Resolved'] == 1) & (qso['F_144'] > fcuts[j]) & (qso['F_144'] < fcuts[j+1]))]
+        unresolved = qso[np.where((qso['Resolved'] == 0) & (qso['F_144'] > fcuts[j]) & (qso['F_144'] < fcuts[j+1]))]
         sizes.append(np.median(np.log10(ext['Phys_size_144'])))
         extfit, extcf = pipeline.measure_and_fit_xcf(autocf, scales, qso, ext, qsorand)
+        #unfit, uncf = pipeline.measure_and_fit_xcf(autocf, scales, qso, unresolved, qsorand)
         ms.append(extfit['Mx']), merrs.append(extfit['sigMx'])
+        #unmass.append(unfit['Mx']), unmasserrs.append(unfit['sigMx'])
+    print(ms, merrs)
+    print(unmass, unmasserrs)
 
-    mass_v_prop.lofar_extended(sizes, ms, merrs)
+    #mass_v_prop.lofar_extended(sizes, ms, merrs)
 
 
 def bal_qso(scales):
@@ -237,57 +244,113 @@ def radio_loud_lum(scales, nlumbins):
 
 
 def radio_luminosity(scales):
-    lumbins = [41.5, 42.5, 45]
+    percentiles = np.array([10, 50, 90, 100])
+    #autocf = retrieve_eboss_autocf()
+
     qso, rand = sample.qsocat()
-    foo, foo2, qso, rand = sample.select_radioloud('LOTSS_DR2', 1.1, qso, rand)
+    qso = qso[np.where(qso['Z'] > 1.3)]
+    rand = rand[np.where(rand['Z'] > 1.3)]
+    qso = qso[np.where(qso['Z'] < 1.7)]
+    rand = rand[np.where(rand['Z'] < 1.7)]
+    fit, autocf = pipeline.measure_and_fit_autocf(scales, qso, rand, nbootstrap=500)
+    qso = qso[np.where(qso['det_144'] > -1)]
+    rand = rand[np.where(rand['in_144'] == 1)]
+    det = qso[np.where(qso['det_144'] == 1)]
+    undet = qso[np.where(qso['det_144'] == 0)]
 
-    brighter_mass, brighter_sigmass = [], []
-    for j in range(len(lumbins)-1):
-        morelum = qso[np.where((qso['det_144'] == 1) & (qso['L_144'] > lumbins[j]))]
-        lumfit, autocf, lumcf = pipeline.measure_and_fit_auto_and_xcf(scales, qso, morelum, rand)
-        brighter_mass.append(lumfit['Mx'])
-        brighter_sigmass.append(lumfit['sigMx'])
+    lum_mass, lum_sigmass = [], []
+    xlumfit, xlumcf = pipeline.measure_and_fit_xcf(autocf, scales, qso, undet, rand)
+    lum_mass.append(xlumfit['Mx'])
+    lum_sigmass.append(xlumfit['sigMx'])
+    for j in range(len(percentiles)-1):
+        qsolum = sample.rolling_percentile_selection(det, 'L_144', minpercentile=percentiles[j],
+                                                     maxpercentile=percentiles[j + 1], nzbins=15)
+        xlumfit, xlumcf = pipeline.measure_and_fit_xcf(autocf, scales, qso, qsolum, rand)
+        lum_mass.append(xlumfit['Mx'])
+        lum_sigmass.append(xlumfit['sigMx'])
 
-def lotss_selected_xcorr(rpscales, radiosfr_thresh=1000, boss=False):
+
+    print(lum_mass)
+    print(lum_sigmass)
+
+def fluxcut(scales):
+    import matplotlib.pyplot as plt
+    cuts = [.5, 3., 10000.]
+    autocf = retrieve_eboss_autocf()
+    qso, rand = sample.qsocat()
+    qso = qso[np.where(qso['det_144'] > -1)]
+    rand = rand[np.where(rand['in_144'] == 1)]
+
+    mbhs = []
+    for j in range(len(cuts)):
+        if j == 0:
+            thisqso = qso[np.where((qso['F_144'] < cuts[0]) | (qso['det_144'] == 0))]
+        else:
+            thisqso = qso[np.where((qso['F_144'] > cuts[j-1]) & (qso['F_144'] <= cuts[j]) & (qso['det_144'] == 1))]
+        mbhs.append(thisqso['MBH'])
+    weights = sample.overlap_weights_1d(mbhs, (6, 11), 20)
+
+    ms, errs, lums = [], [], []
+    for j in range(len(cuts)):
+        if j == 0:
+            thisqso = qso[np.where((qso['F_144'] < cuts[0]) | (qso['det_144'] == 0))]
+        else:
+            thisqso = qso[np.where((qso['F_144'] > cuts[j-1]) & (qso['F_144'] <= cuts[j]) & (qso['det_144'] == 1))]
+        thisqso['weight'] *= weights[j]
+        fit, cf = pipeline.measure_and_fit_xcf(autocf, scales, qso, thisqso, rand)
+
+        ms.append(fit['Mx']), errs.append(fit['sigMx']), lums.append(np.nanmedian(thisqso['L_144']))
+
+    plt.close('all')
+    plt.figure(figsize=(8,7))
+    plt.scatter(lums, ms, c='k')
+    plt.scatter(39.8, ms[0], c='k')
+    plt.errorbar(39.8, ms[0], xuplims=True, xerr=0.1, yerr=errs[0], ecolor='k', fmt='none')
+    plt.errorbar(lums[1:], ms[1:], yerr=errs[1:], ecolor='k', fmt='none')
+    plt.xlabel(r'log$_{10} L_{144 \ \mathrm{MHz}}$ [erg/s]')
+    plt.ylabel(r'log$_{10} (M_h / h^{-1} M_{\odot})$')
+    plt.ylim(12.4, 13.)
+    plt.savefig(plotdir + 'eboss_lum.pdf')
+    plt.close('all')
+
+
+
+
+def lotss_selected_xcorr(rpscales, radiosfr_thresh=1000, boss=True):
+    from scipy.stats import norm
+    radmasses, raderrs, qsomasses, qsoerrs = [], [], [], []
     from SkyTools import fluxutils
     import matplotlib.pyplot as plt
     from mocpy import MOC
     import pymangle
     import astropy.units as u
     eboss_zbins = np.linspace(0.8, 2.2, 6)
-    z_centers = eboss_zbins[:-1] + (eboss_zbins[1] - eboss_zbins[0])/2
+    z_centers = list(eboss_zbins[:-1] + (eboss_zbins[1] - eboss_zbins[0])/2)
     best23_ridgeline_lum = 22.24 + 1.08*np.log10(radiosfr_thresh)
 
-    #lrg = Table.read('../data/lss/eBOSS_LRG/eBOSS_LRG.fits')
-    #randlrg = Table.read('../data/lss/eBOSS_LRG/eBOSS_LRG_randoms.fits')
-
-    #lrg_zbins = [0.6, 1.]
-
-
-
-
-    qso, rand = sample.qsocat(eboss=True, boss=False)
-
-    lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2.fits')
     lotss_class = Table.read('../data/radio_cats/LoTSS_deep/classified/raw/bootes_classifications_dr1.fits')
-    lotss_class = lotss_class[np.where((lotss_class['z_best'] > 0) & (lotss_class['z_best'] < 5))]
+    lotss_class = lotss_class[np.where((lotss_class['z_best'] > 0) & (lotss_class['z_best'] < 4))]
 
-    ebossmoc = pymangle.Mangle('../data/footprints/eBOSS/eBOSS_QSOandLRG_fullfootprintgeometry_noveto.ply')
-    lotss = lotss[np.where(ebossmoc.contains(lotss['RA'], lotss['DEC']))]
+    lrg = Table.read('../data/lss/eBOSS_LRG/eBOSS_LRG.fits')
+    randlrg = Table.read('../data/lss/eBOSS_LRG/eBOSS_LRG_randoms.fits')
+
+    """lrg_zbins = [0.6, 1.]
+    lotss = sample.lotss_rg_sample(colorcut=0.6, w1cut=15.5)
+
+    bossmoc = pymangle.Mangle('../data/footprints/BOSS/boss_geometry_2014_05_28.ply')
+    lotss = lotss[np.where(bossmoc.contains(lotss['RA'], lotss['DEC']))]
     lotss['weight'] = np.ones(len(lotss))
-
     lotssmoc = MOC.from_fits('../data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
-    qso = qso[np.where(lotssmoc.contains(qso['RA'] * u.deg, qso['DEC'] * u.deg))]
-    rand = rand[np.where(lotssmoc.contains(rand['RA'] * u.deg, rand['DEC'] * u.deg))]
+    lrg = lrg[np.where(lotssmoc.contains(lrg['RA'] * u.deg, lrg['DEC'] * u.deg))]
+    randlrg = randlrg[np.where(lotssmoc.contains(randlrg['RA'] * u.deg, randlrg['DEC'] * u.deg))]
 
-    radmasses, raderrs, qsomasses, qsoerrs = [], [], [], []
-    for j in range(len(eboss_zbins)-1):
-        minz, maxz = eboss_zbins[j], eboss_zbins[j+1]
-        qsoz = qso[np.where((qso['Z'] > minz) & (qso['Z'] < maxz))]
-        randz = rand[np.where((rand['Z'] > minz) & (rand['Z'] < maxz))]
+    for j in range(len(lrg_zbins)-1):
+        minz, maxz = lrg_zbins[j], lrg_zbins[j+1]
+        lrgz = lrg[np.where((lrg['Z'] > minz) & (lrg['Z'] < maxz))]
+        randlrgz = randlrg[np.where((randlrg['Z'] > minz) & (randlrg['Z'] < maxz))]
 
         # convert rp scales to angular scales at mean redshift of bin
-        theta_scales = np.rad2deg(rpscales / hm_calcs.col_cosmo.comovingDistance(0, np.mean(randz['Z'])))
+        theta_scales = np.rad2deg(rpscales / hm_calcs.col_cosmo.comovingDistance(0, np.mean(randlrgz['Z'])))
 
         fluxthresh = fluxutils.flux_at_obsnu_from_rest_lum(10**best23_ridgeline_lum, -0.8,
                                                                 .144, .144, minz, energy=False) / 1000.
@@ -300,9 +363,65 @@ def lotss_selected_xcorr(rpscales, radiosfr_thresh=1000, boss=False):
 
         dndz_lotss = redshift_helper.dndz_from_z_list(lotss_class_cut['z_best'], 30, zrange=(0.1, 5.))
 
+        autofit, autocf = pipeline.measure_and_fit_autocf(scales=rpscales, datcat=lrgz, randcat=randlrgz, nbootstrap=500, nzbins=5)
+
+        dndz_qso_matched = redshift_helper.dndz_from_z_list(lrgz['Z'], 30, zrange=(0.1, 5))
+
+
+        lrgz.remove_column('CHI'), randlrgz.remove_column('CHI')
+
+        xcf = twoPointCFs.crosscorr_cats(scales=theta_scales, datcat1=lrgz, datcat2=lotss_bright,
+                                         randcat1=randlrgz, nbootstrap=500, estimator='Peebles')
+        xfit = clustering_fit.fit_xcf(dndz_lotss, xcf, dndz_qso_matched, autocf, model='mass')
+        radmasses.append(xfit[0])
+        raderrs.append(xfit[1])
+        qsomasses.append(autofit['M'])
+        qsoerrs.append(autofit['sigM'])"""
+
+
+    qso, rand = sample.qsocat(eboss=True, boss=False)
+
+    lotss = sample.lotss_rg_sample(colorcut=0.6, w1cut=15.5)
+
+
+    ebossmoc = pymangle.Mangle('../data/footprints/eBOSS/eBOSS_QSOandLRG_fullfootprintgeometry_noveto.ply')
+    lotss = lotss[np.where(ebossmoc.contains(lotss['RA'], lotss['DEC']))]
+    lotss['weight'] = np.ones(len(lotss))
+
+    lotssmoc = MOC.from_fits('../data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
+    qso = qso[np.where(lotssmoc.contains(qso['RA'] * u.deg, qso['DEC'] * u.deg))]
+    rand = rand[np.where(lotssmoc.contains(rand['RA'] * u.deg, rand['DEC'] * u.deg))]
+
+
+    for j in range(len(eboss_zbins)-1):
+        minz, maxz = eboss_zbins[j], eboss_zbins[j+1]
+        qsoz = qso[np.where((qso['Z'] > minz) & (qso['Z'] < maxz))]
+        randz = rand[np.where((rand['Z'] > minz) & (rand['Z'] < maxz))]
+
+        # convert rp scales to angular scales at mean redshift of bin
+        theta_scales = np.rad2deg(rpscales / hm_calcs.col_cosmo.comovingDistance(0, np.mean(randz['Z'])))
+
+        fluxthresh = fluxutils.flux_at_obsnu_from_rest_lum(10**best23_ridgeline_lum, -0.8,
+                                                                .144, .144, minz, energy=False) / 1000.
+        print('Flux cut for z>%s is S_144=%s mJy' % (minz, round(fluxthresh, 2)))
+        fluxthresh = 2
+
+        lotss_bright = lotss[np.where(lotss['Total_flux'] > fluxthresh)]
+        #lotss_bright = lotss_bright[np.where(lotss_bright['r90'] == 1)]
+
+        zs = sample.redshift_dist(lotss_bright, 5.)
+
+        #lotss_class_cut = lotss_class[np.where(lotss_class['S_150MHz'] > fluxthresh / 1000.)]
+        #lotss_class_cut = lotss_class_cut[np.where((lotss_class_cut['z_best'] > 0) & (lotss_class_cut['z_best'] < 4))]
+        #mu, sig = norm.fit(lotss_class_cut['z_best'])
+        #fakezs = np.random.normal(mu, sig, 100000)
+        #fakezs = np.random.normal(1.5, 0.4, 10000)
+
+        dndz_lotss = redshift_helper.dndz_from_z_list(zs, 10, zrange=(0.1, 4.))
+
         autofit, autocf = pipeline.measure_and_fit_autocf(scales=rpscales, datcat=qsoz, randcat=randz, nbootstrap=500, nzbins=5)
 
-        dndz_qso_matched = redshift_helper.dndz_from_z_list(qsoz['Z'], 30, zrange=(0.1, 5))
+        dndz_qso_matched = redshift_helper.dndz_from_z_list(qsoz['Z'], 10, zrange=(0.1, 4.))
 
 
         qsoz.remove_column('CHI'), randz.remove_column('CHI')
@@ -317,7 +436,7 @@ def lotss_selected_xcorr(rpscales, radiosfr_thresh=1000, boss=False):
 
     if boss:
         qso, rand = sample.qsocat(eboss=False, boss=True)
-        lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2.fits')
+        lotss = sample.lotss_rg_sample(colorcut=0.6, w1cut=15.5)
         boss_zbins = [2.2, 3.2]
 
         bossmoc = pymangle.Mangle('../data/footprints/BOSS/boss_geometry_2014_05_28.ply')
@@ -341,25 +460,33 @@ def lotss_selected_xcorr(rpscales, radiosfr_thresh=1000, boss=False):
             fluxthresh = fluxutils.flux_at_obsnu_from_rest_lum(10**best23_ridgeline_lum, -0.8,
                                                                     .144, .144, minz, energy=False) / 1000.
             print('Flux cut for z>%s is S_144=%s mJy' % (minz, round(fluxthresh, 2)))
+            fluxthresh=2
 
             lotss_bright = lotss[np.where(lotss['Total_flux'] > fluxthresh)]
+            zs = sample.redshift_dist(lotss_bright, 5.)
 
-            lotss_class_cut = lotss_class[np.where(lotss_class['S_150MHz'] > fluxthresh / 1000.)]
-            lotss_class_cut = lotss_class_cut[np.where((lotss_class_cut['z_best'] > 0) & (lotss_class_cut['z_best'] < 5))]
+            #lotss_class_cut = lotss_class[np.where(lotss_class['S_150MHz'] > fluxthresh / 1000.)]
+            #lotss_class_cut = lotss_class_cut[np.where((lotss_class_cut['z_best'] > 0) & (lotss_class_cut['z_best'] < 4))]
+            #mu, sig = norm.fit(lotss_class_cut['z_best'])
+            #fakezs = np.random.normal(mu, sig, 100000)
+            #fakezs = np.random.normal(1.5, 0.4, 10000)
 
-            dndz_lotss = redshift_helper.dndz_from_z_list(lotss_class_cut['z_best'], 30, zrange=(0.1, 5.))
+            dndz_lotss = redshift_helper.dndz_from_z_list(zs, 10, zrange=(0.1, 4.))
 
             autofit, autocf = pipeline.measure_and_fit_autocf(scales=rpscales, datcat=qsoz, randcat=randz, nbootstrap=500)
 
-            dndz_qso_matched = redshift_helper.dndz_from_z_list(qsoz['Z'], 30, zrange=(0.1, 5))
+            dndz_qso_matched = redshift_helper.dndz_from_z_list(qsoz['Z'], 10, zrange=(0.1, 4.))
 
             qsoz.remove_column('CHI'), randz.remove_column('CHI')
 
             xcf = twoPointCFs.crosscorr_cats(scales=theta_scales, datcat1=qsoz, datcat2=lotss_bright,
                                              randcat1=randz, nbootstrap=500, estimator='Peebles')
             xfit = clustering_fit.fit_xcf(dndz_lotss, xcf, dndz_qso_matched, autocf, model='mass')
-            #xcfs.append(xfit[0])
-            #errs.append(xfit[1])
+            radmasses.append(xfit[0])
+            raderrs.append(xfit[1])
+            qsomasses.append(autofit['M'])
+            qsoerrs.append(autofit['sigM'])
+            z_centers.append(2.6)
     qsomasses, qsoerrs = np.array(qsomasses), np.array(qsoerrs)
 
     plt.figure(figsize=(8, 7))
@@ -370,7 +497,7 @@ def lotss_selected_xcorr(rpscales, radiosfr_thresh=1000, boss=False):
     plt.xlabel('Redshift')
     plt.legend()
     plt.ylabel(r'log$_{10}(M_h / h^{-1} M_{\odot}$)')
-    plotdir = '/home/graysonpetter/Dropbox/radioplots/'
+
     plt.savefig(plotdir + 'lotss_tomo.pdf')
     plt.close('all')
 
@@ -378,3 +505,25 @@ def lotss_selected_xcorr(rpscales, radiosfr_thresh=1000, boss=False):
 
 
 
+def lens_hiz(nside=1024):
+    from mocpy import MOC
+    import healpy as hp
+    import astropy.units as u
+    from lensing_Helper import measure_lensing_xcorr
+    import sample
+    lotss = sample.lotss_rg_sample(fcut=2.)
+
+    lotssmoc = MOC.from_fits('../data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
+    mask = np.zeros(hp.nside2npix(nside))
+    l, b = hp.pix2ang(nside, np.arange(len(mask)), lonlat=True)
+    ra, dec = coordhelper.galactic_to_equatorial(l, b)
+    idx = lotssmoc.contains(ra*u.deg, dec*u.deg)
+    mask[idx] = 1.
+    #mask = np.ones(hp.nside2npix(nside))
+
+    corr = measure_lensing_xcorr.measure_planck_xcorr(np.logspace(2, 3, 10), (lotss['RA'], lotss['DEC']), nside, mask=mask, accurate=True)
+
+    dndz = redshift_helper.dndz_from_z_list(sample.redshift_dist(lotss, 5), 10, zrange=(0.01, 4.))
+    fit = lensing_fit.xcorr_fit_pipeline(dndz, corr)
+    fig = fit.pop('plot')
+    fig.savefig(plotdir + 'hiz_rg_lensing.pdf')
