@@ -1,7 +1,7 @@
 from astropy.table import Table, vstack
 from mocpy import MOC
 import astropy.units as u
-from astropy.coordinates import SkyCoord
+import pymangle
 import numpy as np
 import healpy as hp
 from SkyTools import healpixhelper as myhp
@@ -48,11 +48,31 @@ def in_lotss_dr2(ras, decs):
 	good_idxs = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
 	return good_idxs
 
+def cat_in_lotss(cat):
+	return cat[in_lotss_dr2(cat['RA'], cat['DEC'])]
+
 def in_eboss(ras, decs):
-	import pymangle
+
 	ebossmoc = pymangle.Mangle('../data/footprints/eBOSS/eBOSS_QSOandLRG_fullfootprintgeometry_noveto.ply')
 	good_idxs = ebossmoc.contains(ras, decs)
 	return good_idxs
+
+def cat_in_eboss(cat):
+	return cat[in_eboss(cat['RA'], cat['DEC'])]
+
+def in_boss(ras, decs):
+	bossmoc = pymangle.Mangle('../data/footprints/BOSS/boss_geometry_2014_05_28.ply')
+	good_idxs = bossmoc.contains(ras, decs)
+	return good_idxs
+
+def cat_in_boss(cat):
+	return cat[in_eboss(cat['RA'], cat['DEC'])]
+
+def in_desi_elg_foot(ras, decs):
+	elgrand = Table.read('/home/graysonpetter/ssd/Dartmouth/data/lss/desiELG_edr/desiELG_edr_randoms.fits')
+	dens = myhp.healpix_density_map(elgrand['RA'], elgrand['DEC'], nsides=256)
+	dens[np.where(dens > 0)] = 1
+	return myhp.inmask((ras, decs), dens, return_bool=True)
 
 def in_vlass_epoch2(ras, decs):
 	moc1 = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/footprints/VLASS/vlass_2.1.moc.fits')
@@ -424,9 +444,59 @@ def qsocat(eboss=True, boss=False):
 		rand = Table.read('catalogs/masked/BOSS_QSO_randoms.fits')
 	return dat, rand
 
-def desiqso():
+def eboss_qso(minz=None, maxz=None):
+	dat = Table.read('catalogs/masked/eBOSS_QSO.fits')
+	rand = Table.read('catalogs/masked/eBOSS_QSO_randoms.fits')
+	if minz is not None:
+		dat = dat[np.where(dat['Z'] > minz)]
+		rand = rand[np.where(rand['Z'] > minz)]
+	if maxz is not None:
+		dat = dat[np.where(dat['Z'] < maxz)]
+		rand = rand[np.where(rand['Z'] < maxz)]
+	return dat, rand
+
+def boss_qso(minz=None, maxz=None):
+	dat = Table.read('catalogs/masked/BOSS_QSO.fits')
+	rand = Table.read('catalogs/masked/BOSS_QSO_randoms.fits')
+	if minz is not None:
+		dat = dat[np.where(dat['Z'] > minz)]
+		rand = rand[np.where(rand['Z'] > minz)]
+	if maxz is not None:
+		dat = dat[np.where(dat['Z'] < maxz)]
+		rand = rand[np.where(rand['Z'] < maxz)]
+	return dat, rand
+
+def desiqso(minz=None, maxz=None):
 	dat = Table.read('catalogs/masked/desiQSO_edr.fits')
 	rand = Table.read('catalogs/masked/desiQSO_edr_randoms.fits')
+	if minz is not None:
+		dat = dat[np.where(dat['Z'] > minz)]
+		rand = rand[np.where(rand['Z'] > minz)]
+	if maxz is not None:
+		dat = dat[np.where(dat['Z'] < maxz)]
+		rand = rand[np.where(rand['Z'] < maxz)]
+	return dat, rand
+
+def desi_elg(minz=None, maxz=None):
+	dat = Table.read('/home/graysonpetter/ssd/Dartmouth/data/lss/desiELG_edr/desiELG_edr.fits')
+	rand = Table.read('/home/graysonpetter/ssd/Dartmouth/data/lss/desiELG_edr/desiELG_edr_randoms.fits')
+	if minz is not None:
+		dat = dat[np.where(dat['Z'] > minz)]
+		rand = rand[np.where(rand['Z'] > minz)]
+	if maxz is not None:
+		dat = dat[np.where(dat['Z'] < maxz)]
+		rand = rand[np.where(rand['Z'] < maxz)]
+	return dat, rand
+
+def desi_lrg(minz=None, maxz=None):
+	dat = Table.read('catalogs/masked/desiLRG_edr.fits')
+	rand = Table.read('catalogs/masked/desiLRG_edr_randoms.fits')
+	if minz is not None:
+		dat = dat[np.where(dat['Z'] > minz)]
+		rand = rand[np.where(rand['Z'] > minz)]
+	if maxz is not None:
+		dat = dat[np.where(dat['Z'] < maxz)]
+		rand = rand[np.where(rand['Z'] < maxz)]
 	return dat, rand
 
 def lotss_rg_sample(fcut=2., sep_cw=5, sep_2mass=5, w1cut=17, colorcut=0.6, jcut=16, w1faint=18, maxflux=1000, majmax=60):
@@ -458,6 +528,8 @@ def redshift_dist(cat, sep):
 	zs = bootes['z_best']
 	#speczs = bootes['Z'][np.where(bootes['Z'] > 0)]
 	return zs
+
+
 
 
 def wisediagram():
