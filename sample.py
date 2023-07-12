@@ -60,19 +60,39 @@ def in_eboss(ras, decs):
 def cat_in_eboss(cat):
 	return cat[in_eboss(cat['RA'], cat['DEC'])]
 
+def lotss_randoms():
+	from SkyTools import random_catalogs
+	randra, randdec = random_catalogs.uniform_sphere(1000, density=True, lat_range=(15, 90))
+	rand = Table()
+	rand['RA'] = randra
+	rand['DEC'] = randdec
+	rand = cat_in_lotss(rand)
+	rand['weight'] = np.ones(len(rand))
+	return rand
+
 def in_boss(ras, decs):
-	bossmoc = pymangle.Mangle('../data/footprints/BOSS/boss_geometry_2014_05_28.ply')
-	good_idxs = bossmoc.contains(ras, decs)
+
+	bossmoc = pymangle.Mangle('../data/footprints/BOSS/bosspoly.ply')
+	ngcmoc = pymangle.Mangle('../data/footprints/BOSS/geometry/boss_survey_ngc_good2.ply')
+	badfield = pymangle.Mangle('../data/footprints/BOSS/geometry/badfield_mask_postprocess_pixs8.ply')
+	badphot = pymangle.Mangle('../data/footprints/BOSS/geometry/badfield_mask_unphot-ugriz_pix.ply')
+	star = pymangle.Mangle('../data/footprints/BOSS/geometry/allsky_bright_star_mask_pix.ply')
+	good_idxs = bossmoc.contains(ras, decs) & ngcmoc.contains(ras, decs) & \
+				(np.logical_not(badfield.contains(ras, decs))) & (np.logical_not(badphot.contains(ras, decs))) & \
+				(np.logical_not(star.contains(ras, decs)))
 	return good_idxs
 
 def cat_in_boss(cat):
-	return cat[in_eboss(cat['RA'], cat['DEC'])]
+	return cat[in_boss(cat['RA'], cat['DEC'])]
 
 def in_desi_elg_foot(ras, decs):
 	elgrand = Table.read('/home/graysonpetter/ssd/Dartmouth/data/lss/desiELG_edr/desiELG_edr_randoms.fits')
-	dens = myhp.healpix_density_map(elgrand['RA'], elgrand['DEC'], nsides=256)
+	dens = myhp.healpix_density_map(elgrand['RA'], elgrand['DEC'], nsides=32)
 	dens[np.where(dens > 0)] = 1
 	return myhp.inmask((ras, decs), dens, return_bool=True)
+
+def cat_in_desi_elg(cat):
+	return cat[in_desi_elg_foot(cat['RA'], cat['DEC'])]
 
 def in_vlass_epoch2(ras, decs):
 	moc1 = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/footprints/VLASS/vlass_2.1.moc.fits')
@@ -499,25 +519,37 @@ def desi_lrg(minz=None, maxz=None):
 		rand = rand[np.where(rand['Z'] < maxz)]
 	return dat, rand
 
-def lotss_rg_sample(fcut=2., sep_cw=5, sep_2mass=5, w1cut=17, colorcut=0.6, jcut=16, w1faint=18, maxflux=1000, majmax=60):
+def lotss_rg_sample(fcut=2., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=17.5, maxflux=1000, majmax=30):
 	from SkyTools import fluxutils
 	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
-	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
+	#lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
 	lotss = lotss[np.where(lotss['Maj'] < majmax)]
-	lotss = lotss[np.where((lotss['Jmag'].mask == True) | (np.array(lotss['Jmag'], dtype=float) > jcut) | (lotss['sep_2mass'] > sep_2mass))]
+	#lotss = lotss[np.where((lotss['Jmag'].mask == True) | (np.array(lotss['Jmag'], dtype=float) > jcut) | (lotss['sep_2mass'] > sep_2mass))]
 	# detected in WISE to avoid lobes
 	lotss = lotss[np.where((lotss['sep_cw'] < sep_cw))]
+	lotss = lotss[np.where((lotss['W2_cw'] < w2faint))]
 
-	lotss = lotss[np.where(((lotss['W1_cw'] - lotss['W2_cw']) > (5.25 - 0.3 * lotss['W2_cw'])))]
+	#lotss = lotss[np.where(((lotss['W1_cw'] - lotss['W2_cw']) > (5.25 - 0.3 * lotss['W2_cw'])))]
+	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) > ((17 - lotss['W2_cw'])/4.+yint))]
+
+	lotss.remove_columns(['RA', 'DEC'])
+	lotss.rename_columns(['RA_cw', 'DEC_cw'], ['RA', 'DEC'])
 
 	#lotss = lotss[np.where( (lotss['W1_cw'] - lotss['W2_cw'] > colorcut) | (lotss['W1_cw'] > w1cut) |
 	# (lotss['W1_cw'].mask == True) | (lotss['W2_cw'].mask == True))]
 	lotss['r75'] = np.array(fluxutils.r75_assef(lotss['W1_cw'], lotss['W2_cw']), dtype=int)
 	lotss['r90'] = np.array(fluxutils.r90_assef(lotss['W1_cw'], lotss['W2_cw']), dtype=int)
 	lotss = lotss[lotss['Total_flux'] > fcut]
+	lotss['weight'] = np.ones(len(lotss))
 	return lotss
 
 
+def match2bootes(cat, sep):
+	bootes = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
+	bootidx, catidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (cat['RA'], cat['DEC']),
+											   max_sep=sep, symmetric=False)
+	bootes = bootes[bootidx]
+	return bootes
 
 def redshift_dist(cat, sep):
 	bootes = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
@@ -532,85 +564,74 @@ def redshift_dist(cat, sep):
 
 
 
-def wisediagram():
-	import matplotlib.pyplot as plt
-	from SkyTools import coordhelper
-	from astropy.table import vstack, hstack
-	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
-	lotss = lotss[np.where(lotss['Total_flux'] > 2.)]
-	lotss = lotss[np.where(lotss['sep_cw'] < 5.)]
-	bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
-	bootidx, lotidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (lotss['RA'], lotss['DEC']), 5.,
-											   symmetric=False)
-	lotss = lotss[lotidx]
-	bootes = bootes[bootidx]
+def spline_dndz(dndz, n_newzs, spline_k=4, smooth=0.05):
+	from halomodelpy import redshift_helper
+	smooth_dndz = redshift_helper.spline_dndz(dndz, n_newzs=n_newzs, spline_k=spline_k, smooth=smooth)
+	return smooth_dndz
 
-	comb = hstack([lotss, bootes])
 
-	lowz = comb[np.where(comb['z_best'] < 0.5)]
-	star = comb[np.where(comb['Overall_class'] == 'SFG')]
-	midz = comb[np.where((comb['z_best'] > 0.5) & (comb['z_best'] < 1.))]
-	hiz = comb[np.where(comb['z_best'] > 1)]
+def tomographer_dndz():
+	import pandas as pd
+	nz = pd.read_csv('results/tomographer/ddz.csv')
+	zs, dndz_b, dndz_berr = nz['z'], nz['dNdz_b'], nz['dNdz_b_err']
 
-	plotdir = '/home/graysonpetter/Dropbox/radioplots/'
-	plt.scatter(lowz['W2_cw'], lowz['W1_cw'] - lowz['W2_cw'], s=20, c='cornflowerblue', marker='o')
+	bconst_int = np.trapz(dndz_b, zs)
+	bconst_dndz = dndz_b / bconst_int
+	bconst_dndz_err = dndz_berr / bconst_int
 
-	plt.scatter(midz['W2_cw'], midz['W1_cw'] - midz['W2_cw'], s=20, c='orange', marker='o')
-	plt.scatter(hiz['W2_cw'], hiz['W1_cw'] - hiz['W2_cw'], s=20, c='firebrick', marker='o')
-	plt.scatter(star['W2_cw'], star['W1_cw'] - star['W2_cw'], s=10, c='blue', marker='*')
-	plt.scatter(0, 0, s=100, c='b', marker='*', label="SF-only")
-	plt.plot(np.linspace(10, 13.86, 5), 0.65 * np.ones(5), ls='--', c='k')
-	plt.plot(np.linspace(13.86, 20, 100), 0.65 * np.exp(0.153 * np.square(np.linspace(13.86, 20, 100) - 13.86)), c='k',
-			 ls='--')
-	plt.ylim(-0.5, 2)
-	plt.text(15.2, 1.8, 'R90 AGN', fontsize=15)
-	plt.text(12.2, 0.4, r'$z < 0.5$', color='cornflowerblue', fontsize=20)
-	plt.text(14.5, -0.3, r'$0.5 < z < 1$', color='orange', fontsize=20)
-	plt.text(17.5, 1.6, r'$z > 1$', color='firebrick', fontsize=20)
-	plt.xlim(12, 18.5)
-	plt.plot(np.linspace(10, 20, 100), (5.25 - 0.3 * np.linspace(10, 20, 100)), c='grey', ls='--')
-	plt.xlabel('W2')
-	plt.ylabel(r'W1 $-$ W2')
-	plt.legend()
-	plt.title(r'$S_{150 \ \mathrm{MHz}} >$ 2 mJy')
-	plt.savefig(plotdir + 'wise_diagram.pdf')
-	plt.close('all')
+	dndz_growth = dndz_b * cosmo.growthFactor(zs)
+	dndz_growth_err = dndz_berr * cosmo.growthFactor(zs)
 
-def hostgals():
-	import matplotlib.pyplot as plt
-	lotz = lotss_rg_sample()
-	from SkyTools import coordhelper
-	bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
-	bootes = bootes[np.where(bootes['z_best'] < 4)]
-	bootidx, lotidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (lotz['RA'], lotz['DEC']), 5.,
-											   symmetric=False)
-	bootes = bootes[bootidx]
+	growth_int = np.trapz(dndz_growth, zs)
+	dndz_growth /= growth_int
+	dndz_growth_err /= growth_int
 
-	bootes = bootes[np.where((bootes['SFR_cons'] > -3) & (bootes['Mass_cons'] > 0))]
+	return zs, dndz_growth, dndz_growth_err
 
-	herg = bootes[np.where(bootes['Overall_class'] == "HERG")]
-	lerg = bootes[np.where(bootes['Overall_class'] == "LERG")]
-	sfg = bootes[np.where(bootes['Overall_class'] == "SFG")]
-	agn = bootes[np.where(bootes['Overall_class'] == "RQAGN")]
 
-	from halomodelpy import params
-	pob = params.param_obj()
-	cos = pob.apcosmo
+def estimate_rg_magbias(fluxcut, magdiff=0.1, nboots=100):
+	lotss_liberal = lotss_rg_sample(fluxcut * .5)
+	mags = -2.5 * np.log10(lotss_liberal['Total_flux'])
+	magcut = -2.5 * np.log10(fluxcut)
 
-	plotdir = '/home/graysonpetter/Dropbox/radioplots/'
-	s = 15
-	plt.scatter(herg['z_best'], herg['SFR_cons'] - herg['Mass_cons'], s=s, c='none', label='HERG', edgecolors='orange')
-	plt.scatter(lerg['z_best'], lerg['SFR_cons'] - lerg['Mass_cons'], s=s, c='none', label='LERG',
-				edgecolors='firebrick')
-	plt.scatter(sfg['z_best'], sfg['SFR_cons'] - sfg['Mass_cons'], s=s, c='none', label='SFG', marker='*',
-				edgecolors='cornflowerblue')
-	plt.scatter(agn['z_best'], agn['SFR_cons'] - agn['Mass_cons'], s=s, c='none', label='RQAGN', marker='s',
-				edgecolors='green')
-	plt.plot(np.linspace(0, 4, 100), np.log10(.2 / cos.age(np.linspace(0, 4, 100)).to('yr').value), c='k', ls='--')
-	plt.arrow(3, np.log10(.2 / cos.age(3).to('yr').value), 0, -.2, head_width=.1, color='k')
-	plt.text(2.5, -10.6, 'Quenched', fontsize=15)
-	plt.ylabel('log sSFR (yr$^{-1}$)')
-	plt.legend(fontsize=10)
-	plt.xlabel('Redshift')
-	plt.savefig(plotdir + 'sSFR.pdf')
-	plt.close('all')
+	ncut = len(np.where(mags < magcut)[0])
+
+	n_brighter = len(np.where(mags < (magcut - magdiff))[0])
+	n_fainter = len(np.where(mags < (magcut + magdiff))[0])
+
+	dlogn_dm_1 = (np.log10(n_brighter) - np.log10(ncut)) / (-magdiff)
+	dlogn_dm_2 = (np.log10(n_fainter) - np.log10(ncut)) / (magdiff)
+
+	smu = np.mean([dlogn_dm_1, dlogn_dm_2])
+
+	smus = []
+	for j in range(nboots):
+
+		lotss_boot = lotss_liberal[np.random.choice(len(lotss_liberal), len(lotss_liberal), replace=True)]
+		mags = -2.5 * np.log10(lotss_boot['Total_flux'])
+		ncut = len(np.where(mags < magcut)[0])
+
+		n_brighter = len(np.where(mags < (magcut - magdiff))[0])
+		n_fainter = len(np.where(mags < (magcut + magdiff))[0])
+		dlogn_dm_1 = (np.log10(n_brighter) - np.log10(ncut)) / (-magdiff)
+		dlogn_dm_2 = (np.log10(n_fainter) - np.log10(ncut)) / (magdiff)
+
+		smus.append(np.mean([dlogn_dm_1, dlogn_dm_2]))
+	return smu, np.std(smus)
+
+
+
+
+
+
+
+def maketomographer_files(nside=128):
+	rgs = lotss_rg_sample()
+	mask = np.zeros(hp.nside2npix(nside))
+	l, b = hp.pix2ang(nside, np.arange(len(mask)), lonlat=True)
+	ra, dec = coordhelper.galactic_to_equatorial(l, b)
+	inmoc = in_lotss_dr2(ra, dec)
+	mask[inmoc] = 1
+	rgs = rgs['RA', 'DEC']
+	rgs.write('results/tomographer/lotss_rg.fits', overwrite=True)
+	hp.write_map('results/tomographer/mask.fits', mask, overwrite=True)
