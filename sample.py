@@ -522,7 +522,7 @@ def desi_lrg(minz=None, maxz=None):
 def lotss_rg_sample(fcut=2., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=17.5, maxflux=1000, majmax=30):
 	from SkyTools import fluxutils
 	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
-	#lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
+	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
 	lotss = lotss[np.where(lotss['Maj'] < majmax)]
 	#lotss = lotss[np.where((lotss['Jmag'].mask == True) | (np.array(lotss['Jmag'], dtype=float) > jcut) | (lotss['sep_2mass'] > sep_2mass))]
 	# detected in WISE to avoid lobes
@@ -543,6 +543,24 @@ def lotss_rg_sample(fcut=2., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=
 	lotss['weight'] = np.ones(len(lotss))
 	return lotss
 
+def midz_rg_sample(fcut=5., sep_cw=5,  w2faint=17.5, maxflux=1000, majmax=30):
+	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
+	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
+	lotss = lotss[np.where(lotss['Maj'] < majmax)]
+	# detected in WISE to avoid lobes
+	lotss = lotss[np.where((lotss['sep_cw'] < sep_cw))]
+	lotss = lotss[np.where((lotss['W2_cw'] < w2faint))]
+
+	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) < ((17 - lotss['W2_cw']) / 4. + 0.15))]
+	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) < ((lotss['W2_cw'] - 17) / 3. + 0.75))]
+
+	lotss.remove_columns(['RA', 'DEC'])
+	lotss.rename_columns(['RA_cw', 'DEC_cw'], ['RA', 'DEC'])
+
+	lotss = lotss[lotss['Total_flux'] > fcut]
+	lotss['weight'] = np.ones(len(lotss))
+	return lotss
+
 
 def match2bootes(cat, sep):
 	bootes = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
@@ -550,6 +568,82 @@ def match2bootes(cat, sep):
 											   max_sep=sep, symmetric=False)
 	bootes = bootes[bootidx]
 	return bootes
+
+
+
+def rg_redshifts():
+	from SkyTools import get_redshifts
+	rgs = lotss_rg_sample()
+	rgs = get_redshifts.match_to_spec_surveys(rgs, seplimit=3)
+	rgs.write('catalogs/rgs_specz.fits', overwrite=True)
+
+def treat_dndz_pdf(cat, sep=3, ndraws=100):
+	bootes = match2bootes(cat, sep=sep)
+	specs = bootes[np.where(bootes['f_zbest'] == 1)]
+	phots = bootes[np.where(bootes['f_zbest'] == 0)]
+
+	singlephots = phots[np.where(phots['z2med'] == -99)]
+	doublephots = phots[np.where(phots['z2med'] > 0)]
+	maxpossiblez = 3.5
+
+	speczs = list(np.repeat(specs['z_best'], ndraws))
+	#specweights = list(ndraws*np.ones_like(speczs))
+
+	singlezs, singleweights = [], []
+	for j in range(len(singlephots)):
+		thisrow = singlephots[j]
+		uperr = (thisrow['z1max'] - thisrow['z1med']) / 1.3
+		loerr = (thisrow['z1med'] - thisrow['z1min']) / 1.3
+		weight = thisrow['z1area']
+
+		b = np.random.normal(loc=thisrow['z1med'], scale=uperr, size=ndraws)
+		above = b[np.where(b > thisrow['z1med'])]
+		c = np.random.normal(loc=thisrow['z1med'], scale=loerr, size=ndraws)
+		below = c[np.where((c > 0) & (c < thisrow['z1med']))]
+		tot = np.concatenate((above, below))
+		try:
+			singlezs += list(np.random.choice(tot, int(weight * ndraws), replace=False))
+		except:
+			pass
+
+
+	doublezs1, doublezs2, doubleweights1, doubleweights2 = [], [], [], []
+	for j in range(len(doublephots)):
+		thisrow = doublephots[j]
+		uperr = (thisrow['z1max'] - thisrow['z1med']) / 1.3
+		loerr = (thisrow['z1med'] - thisrow['z1min']) / 1.3
+		weight = thisrow['z1area']
+		if thisrow['z1med'] < maxpossiblez:
+
+			b = np.random.normal(loc=thisrow['z1med'], scale=uperr, size=ndraws)
+			above = b[np.where(b > thisrow['z1med'])]
+			c = np.random.normal(loc=thisrow['z1med'], scale=loerr, size=ndraws)
+			below = c[np.where((c > 0) & (c < thisrow['z1med']))]
+			tot1 = np.concatenate((above, below))
+			try:
+				doublezs1 += list(np.random.choice(tot1, int(weight * ndraws), replace=False))
+			except:
+				pass
+
+		uperr = (thisrow['z2max'] - thisrow['z2med']) / 1.3
+		loerr = (thisrow['z2med'] - thisrow['z2min']) / 1.3
+		weight = thisrow['z2area']
+
+		if thisrow['z2med'] < maxpossiblez:
+
+			b = np.random.normal(loc=thisrow['z2med'], scale=uperr, size=ndraws)
+			above = b[np.where(b > thisrow['z2med'])]
+			c = np.random.normal(loc=thisrow['z2med'], scale=loerr, size=ndraws)
+			below = c[np.where((c > 0) & (c < thisrow['z2med']))]
+			tot2 = np.concatenate((above, below))
+			try:
+				doublezs2 += list(np.random.choice(tot2, int(weight * ndraws), replace=False))
+			except:
+				pass
+
+
+	finalzs = np.array(speczs + singlezs + doublezs1 + doublezs2)
+	return finalzs
 
 def redshift_dist(cat, sep):
 	bootes = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
@@ -560,9 +654,6 @@ def redshift_dist(cat, sep):
 	zs = bootes['z_best']
 	#speczs = bootes['Z'][np.where(bootes['Z'] > 0)]
 	return zs
-
-
-
 
 def spline_dndz(dndz, n_newzs, spline_k=4, smooth=0.05):
 	from halomodelpy import redshift_helper
