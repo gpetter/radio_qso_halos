@@ -1,17 +1,14 @@
 import numpy as np
-from astropy.table import Table, hstack
+from astropy.table import Table, hstack, vstack
 import matplotlib.pyplot as plt
 import astropy.units as u
 import sample
 from SkyTools import coordhelper, fluxutils
 import pandas as pd
-
+hic = 'firebrick'
 plotdir = '/home/graysonpetter/Dropbox/radioplots/'
 def wisediagram(fcut=2.):
-    hic = 'firebrick'
-    import matplotlib.pyplot as plt
-    from SkyTools import coordhelper
-    from astropy.table import vstack, hstack
+
     lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
     lotss = lotss[np.where(lotss['Total_flux'] > fcut)]
     lotss = lotss[np.where(lotss['sep_cw'] < 5.)]
@@ -61,6 +58,59 @@ def wisediagram(fcut=2.):
     plt.legend(fontsize=10, loc='lower left')
     ax.text(0.05, 0.93, r'$S_{150 \ \mathrm{MHz}} >$ %s mJy' % (int(fcut)), transform=ax.transAxes, fontsize=20)
     plt.savefig(plotdir + 'wise_diagram%s.pdf' % int(fcut))
+    plt.close('all')
+
+def wisediagram_both():
+
+    fcuts = [2., 5.]
+    fig, axs = plt.subplots(nrows=2, sharex=True, figsize=(8, 14))
+    plt.xlim(11, 19)
+    axs[1].set_xlabel('W2 [Vega mag]')
+    for j in range(2):
+        lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
+        lotss = lotss[np.where(lotss['Total_flux'] > fcuts[j])]
+        lotss = lotss[np.where(lotss['sep_cw'] < 5.)]
+        bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
+        bootidx, lotidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (lotss['RA'], lotss['DEC']), 5.,
+                                                   symmetric=False)
+        lotss = lotss[lotidx]
+        bootes = bootes[bootidx]
+
+        comb = hstack([lotss, bootes])
+
+        lowz = comb[np.where(comb['z_best'] < 0.5)]
+        star = comb[np.where(comb['Overall_class'] == 'SFG')]
+        midz = comb[np.where((comb['z_best'] > 0.5) & (comb['z_best'] < 1.))]
+        hiz = comb[np.where(comb['z_best'] > 1)]
+
+        axs[j].scatter(lowz['W2_cw'], lowz['W1_cw'] - lowz['W2_cw'], s=20, c='none', edgecolors='cornflowerblue', marker='o')
+
+        axs[j].scatter(midz['W2_cw'], midz['W1_cw'] - midz['W2_cw'], s=20, c='none', edgecolors='orange', marker='o')
+        axs[j].scatter(hiz['W2_cw'], hiz['W1_cw'] - hiz['W2_cw'], s=20, c='none', edgecolors=hic, marker='o')
+        axs[j].scatter(star['W2_cw'], star['W1_cw'] - star['W2_cw'], s=10, c='blue', marker='*', edgecolors='none')
+        axs[j].scatter(0, 0, s=100, c='b', marker='*', label="SF-only", edgecolors='none')
+        axs[j].plot(np.linspace(10, 13.86, 5), 0.65 * np.ones(5), ls='dotted', c='grey', alpha=0.5)
+        axs[j].plot(np.linspace(13.86, 20, 100), 0.65 * np.exp(0.153 * np.square(np.linspace(13.86, 20, 100) - 13.86)),
+                 c='grey', ls='dotted', alpha=0.5)
+        if j == 1:
+            plt.plot(np.linspace(12, 15.97, 10), (np.linspace(12, 15.97, 10) - 17) / 3 + 0.75, c='orange', ls='dashed')
+
+        axs[j].text(17.6, 1.6, r'W2 90$\%$ Completeness', rotation=90, fontsize=8)
+        axs[j].set_ylim(-0.5, 2.5)
+        axs[j].text(16.15, 1.8, 'R90 AGN', fontsize=10, rotation=73, color='grey')
+        axs[j].text(11.5, 0.4, r'$z < 0.5$', color='cornflowerblue', fontsize=20)
+        axs[j].text(14.2, -0.4, r'$0.5 < z < 1$', color='orange', fontsize=20)
+        axs[j].text(18, 1., r'$z > 1$', color=hic, fontsize=20)
+
+        axs[j].text(11.2, 1.35, '(17-W2)/4+0.15', rotation=-28, color=hic)
+        axs[j].plot(np.linspace(10, 20, 100), (17 - np.linspace(10, 20, 100)) / 4 + 0.15, c=hic, ls='--', alpha=0.8)
+        axs[j].axvline(17.5, ls='--', c='k', alpha=0.8)
+
+        axs[j].set_ylabel(r'W1 $-$ W2 [Vega mag]')
+        axs[j].legend(fontsize=10, loc='lower left')
+        axs[j].text(0.05, 0.93, r'$S_{150 \ \mathrm{MHz}} >$ %s mJy' % (int(fcuts[j])), transform=axs[j].transAxes, fontsize=20)
+    plt.subplots_adjust(hspace=0)
+    plt.savefig(plotdir + 'wise_diagram.pdf')
     plt.close('all')
 
 def hostgals(izrgs=False):
@@ -198,9 +248,9 @@ def izrg_redshift_dist(nbins=5, ndraws=100):
     plt.savefig(plotdir + 'izrg_dndz.pdf')
     plt.close('all')
 
-def lum_redshift(izrgs=False):
-    fluxcut=2.
-    lotz = sample.lotss_rg_sample()
+def lum_redshift(izrgs=False, hzrgflux=2., izrgflux=5.):
+
+    lotz = sample.lotss_rg_sample(hzrgflux)
     s=40
 
     bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
@@ -227,7 +277,7 @@ def lum_redshift(izrgs=False):
     agnlums = np.log10(
         fluxutils.luminosity_at_rest_nu(np.array(agn['Total_flux']), -0.7, .144, .15, agn['z_best'], flux_unit=u.mJy,
                                         energy=False))
-    limlum = np.log10(fluxutils.luminosity_at_rest_nu(fluxcut*np.ones_like(zspace), -0.7, .144, .15, zspace, flux_unit=u.mJy, energy=False))
+    limlum = np.log10(fluxutils.luminosity_at_rest_nu(hzrgflux*np.ones_like(zspace), -0.7, .144, .15, zspace, flux_unit=u.mJy, energy=False))
 
 
 
@@ -243,7 +293,7 @@ def lum_redshift(izrgs=False):
                 edgecolors='darkgreen')
 
     if izrgs:
-        lotz = sample.midz_rg_sample()
+        lotz = sample.midz_rg_sample(izrgflux)
 
 
         bootes = sample.match2bootes(lotz, 3.)
@@ -284,7 +334,7 @@ def lum_redshift(izrgs=False):
                         edgecolors='darkgreen', alpha=0.3)
         zspace = np.linspace(0.1, 1, 20)
         limlum = np.log10(
-            fluxutils.luminosity_at_rest_nu(5. * np.ones_like(zspace), -0.7, .144, .15, zspace, flux_unit=u.mJy,
+            fluxutils.luminosity_at_rest_nu(izrgflux * np.ones_like(zspace), -0.7, .144, .15, zspace, flux_unit=u.mJy,
                                             energy=False))
         plt.plot(zspace, limlum, c='k', ls='--')
 
@@ -342,8 +392,9 @@ def heating_contribution():
     plt.close('all')
 
 #wisediagram(2.)
+wisediagram_both()
 #izrg_redshift_dist(7)
 #hostgals(True)
 #redshift_dist(30)
 #lum_redshift(True)
-heating_contribution()
+#heating_contribution()

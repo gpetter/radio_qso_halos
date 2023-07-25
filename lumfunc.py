@@ -3,6 +3,9 @@ from SkyTools import fluxutils
 import astropy.units as u
 from halomodelpy import luminosityfunction, hubbleunits, redshift_helper
 import numpy as np
+from astropy import constants as const
+from halomodelpy import cosmo
+apcosmo = cosmo.apcosmo
 
 
 ragn1_13 = pd.read_csv('AGN_LF_Kondapally22-main/radio-excess_AGN/LF_radio_excess_AGN_1.0_z_1.3_tab.csv')
@@ -110,7 +113,6 @@ def occupation_zrange(logminmass, zrange, fluxcut, fluxmax=None):
 
 
 
-
 #def interp_lf_brighter(z, fluxcut=2.):
 #    dens = density_brighter_than_flux(fluxcut=fluxcut)
 #    return 10**np.interp(z, zcenters, np.log10(dens))
@@ -153,7 +155,7 @@ def int_heat(heatfile, lmin, lmax=29):
     lumgrid = np.linspace(lmin, lmax, 100)
     interp_heat = np.interp(lumgrid, lum, heat, right=0.)
     totheat = np.trapz(interp_heat, lumgrid) * 1e7  # erg/s/Mpc^3
-    return totheat
+    return hubbleunits.add_h_to_density(totheat)
 
 def interp_heat_above_lum(z, lmin, lmax=29):
     heat0 = pd.read_csv('results/kondapally_heating/z05_1_agn.csv', names=['lum', 'heat'])
@@ -200,6 +202,89 @@ def heating_fluxlim_zrange(zrange, fluxcut, fluxmax=None):
 
     return heating_fluxlim_dndz(dndz=dndz, fluxcut=fluxcut, fluxmax=fluxmax)
 
+def heat_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None):
+    heatdens = heating_fluxlim_zrange(zrange=zrange, fluxcut=fluxcut, fluxmax=fluxmax)
+    halodens = hmf_zrange(zrange=zrange, logminmass=logminmass)
+    return heatdens / halodens
+
+def energy_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None):
+    dutycycle = occupation_zrange(zrange=zrange, logminmass=logminmass, fluxcut=fluxcut, fluxmax=fluxmax)
+    elapsedtime = (apcosmo.age(zrange[0]) - apcosmo.age(zrange[1])).to('s').value
+    heatperhalo = heat_per_halo_zrange(zrange=zrange, logminmass=logminmass, fluxcut=fluxcut, fluxmax=fluxmax)
+    return np.log10(dutycycle * elapsedtime * heatperhalo)
+
+
+def mgas_from_mhalo(logmh):
+
+    mh = hubbleunits.remove_h_from_mass(10 ** logmh)
+    mgas = apcosmo.Ob0 / apcosmo.Om0 * mh
+    return mgas
+
+def halobinding_energy(logmh, z):
+
+    from colossus.halo import mass_so
+
+
+    r200c = hubbleunits.remove_h_from_scale(mass_so.M_to_R(10**logmh, z, '200c'))
+    mgas = mgas_from_mhalo(logmh)
+
+    ubind = (3 * const.G * (mgas * u.solMass) ** 2 / (5 * r200c * u.kpc)).to(u.erg).value
+    return np.log10(ubind)
+
+
+
+
+def thermal_energy_mass(logmh, tempkev):
+    mgas = mgas_from_mhalo(logmh) * u.solMass
+    nparticles = mgas / const.m_p
+    return np.log10((3/2 * nparticles * (tempkev * u.keV)).to('erg').value)
+
+
+def lx_energy(loglx, zrange):
+    tcosmic = (apcosmo.age(zrange[0]) - apcosmo.age(zrange[1])).to('s').value
+    return np.log10(tcosmic * 10 ** loglx)
+
+
+def windheating(zrange, kinetic_frac=0.005):
+    hopkins_ebol = pd.read_csv('results/kondapally_heating/ebol_agn_hopkins.csv', names=['z', 'Ebol'])
+    goodidx = np.where((hopkins_ebol['z'] > zrange[0]) & (hopkins_ebol['z'] < zrange[1]))
+    ebols = hopkins_ebol['Ebol'].loc[goodidx]
+    return hubbleunits.add_h_to_density(kinetic_frac*(np.max(ebols) - np.min(ebols)) * 1e7)
+
+
+def windheat_per_halo(zrange, logminmass, fduty, kinetic_frac=0.005):
+    heatdens = windheating(zrange, kinetic_frac)
+    halodens = hmf_zrange(zrange, logminmass)
+    heatperhalo = heatdens / halodens
+    return np.log10(heatperhalo)
+
+def type1_windheatperhalo(zrange, logminmass, kinetic_frac=0.005):
+    # quasars live in 12.5 halos, or minimum mass 12.2
+    halodens_type1 = hmf_zrange(zrange=zrange, logminmass=12.2)
+    # fraction of quasars in halos more massive than M
+    massive_frac = hmf_zrange(zrange=zrange, logminmass=logminmass) / halodens_type1
+    # energy released in massive halos is massive_frac * energy released by all quasars
+    epervolume = massive_frac * windheating(zrange=zrange, kinetic_frac=kinetic_frac)
+    return np.log10(epervolume / hmf_zrange(zrange=zrange, logminmass=logminmass))
+
+
+def hod_density_above_m(hodparams, fduty, eff_z, logm_min):
+    from halomodelpy import hod_model
+    hod = hod_model.zheng_hod(hodparams, param_ids=['M', 'sigM', 'M0', 'M1', 'alpha'])
+    number_per_volume = fduty * hod['hod'] * cosmo.hmf_z(hod['mgrid'], eff_z)
+    goodidx = np.where(hod['mgrid'] > logm_min)
+    mgrid = 10**hod['mgrid'][goodidx]
+    number_per_volume = number_per_volume[goodidx]
+
+    dens_above_m = np.trapz(number_per_volume, x=np.log(mgrid))
+    return dens_above_m
+
+
+
+
+
+
+
 def interp_heat_z(z, fluxlim, maxflux):
     """
     Interpolate between redshift bins to estimate total heating power at any redshift z
@@ -218,23 +303,3 @@ def interp_heat_z(z, fluxlim, maxflux):
     for j in range(len(heatfiles)):
         totheats.append(np.log10(int_heat(heatfiles[j], zs[j], fluxlim, maxflux)))
     return 10 ** np.interp(z, zs, totheats)
-
-def mgas_from_mhalo(logmh):
-    from halomodelpy import cosmo
-    apcosmo = cosmo.apcosmo
-    mh = hubbleunits.remove_h_from_mass(10 ** logmh)
-    mgas = apcosmo.Ob0 / apcosmo.Om0 * mh
-    return mgas
-
-def halobinding_energy(logmh, z):
-
-    from colossus.halo import mass_so
-    from astropy import constants as const
-
-    r200c = hubbleunits.remove_h_from_scale(mass_so.M_to_R(10**logmh, z, '200c'))
-    mgas = mgas_from_mhalo(logmh)
-
-    ubind = (3 * const.G * (mgas * u.solMass) ** 2 / (5 * r200c * u.kpc)).to(u.erg).value
-    return ubind
-
-

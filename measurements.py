@@ -1,6 +1,8 @@
 from corrfunc_helper import twoPointCFs
 from halomodelpy import clustering_fit, redshift_helper, pipeline, hm_calcs, lensing_fit, cosmo
 import numpy as np
+
+import lumfunc
 import sample
 from SkyTools import catalog_utils, coordhelper
 from astropy.table import Table
@@ -8,7 +10,7 @@ from plotscripts import mass_v_prop
 import pickle
 import glob
 import os
-
+from plotscripts import results
 plotdir = '/home/graysonpetter/Dropbox/radioplots/'
 def eboss_qso_autocf(scales):
     qso, rand = sample.qsocat(eboss=True, boss=False)
@@ -29,14 +31,6 @@ def read_pickle(filename):
     with open(filename, 'rb') as f:
         return pickle.load(f)
 
-def cleanup_results():
-    oldresults = glob.glob('results/cfs/tomo/*.pickle')
-    oldresults += glob.glob('results/fits/tomo/*.pickle')
-    oldresults += glob.glob('results/cfs/*.pickle')
-    oldresults += glob.glob('results/fits/*.pickle')
-    oldresults += glob.glob('results/dndz/rg.pickle')
-    for result in oldresults:
-        os.remove(result)
 
 
 def autcorrs_by_property(scales, cat, randcat, prop, prop_bins, pimax=40., dpi=1., mubins=None, wedges=None):
@@ -386,6 +380,11 @@ def autocorr_izrgs(rpscales):
 
 
 def desi_elg_xcorr(rpscales):
+    oldresults = glob.glob('results/cfs/tomo/rg_elg*.pickle')
+    oldresults += glob.glob('results/fits/tomo/rg_elg*.pickle')
+
+    for result in oldresults:
+        os.remove(result)
     zbins = np.array([1., 1.5])
     zcenters = np.array([1.25])
     lotss = sample.lotss_rg_sample()
@@ -416,6 +415,7 @@ def desi_elg_xcorr(rpscales):
 
         dndz_elg_matched = redshift_helper.dndz_from_z_list(rand['Z'], 30, zrange=(0.1, 4.))
         xfit = clustering_fit.fit_xcf(dndz_lotss, xcf, dndz_elg_matched, autocf, model='mass')
+        xfit.update(clustering_fit.fit_xcf(dndz_lotss, xcf, dndz_elg_matched, autocf, model='minmass'))
         xfit['eff_z'] = redshift_helper.effective_z(dndz_lotss, dndz_elg_matched)
         write_pickle('results/fits/tomo/rg_elg', xfit)
 
@@ -423,8 +423,12 @@ def desi_elg_xcorr(rpscales):
 
 
 
-def lotss_selected_xcorr(rpscales, fcut=2):
-    cleanup_results()
+def hzrg_xcorr(rpscales, fcut=2):
+    oldresults = glob.glob('results/cfs/tomo/rg_qso*.pickle')
+    oldresults += glob.glob('results/fits/tomo/rg_qso*.pickle')
+    oldresults += glob.glob('results/dndz/hzrg.pickle')
+    for result in oldresults:
+        os.remove(result)
     cflist = []
 
     eboss_zbins = np.linspace(1., 2.5, 4)
@@ -436,12 +440,11 @@ def lotss_selected_xcorr(rpscales, fcut=2):
 
     qso = sample.cat_in_lotss(qso)
     rand = sample.cat_in_lotss(rand)
-    qsomods = []
 
     zs = sample.treat_dndz_pdf(lotss)
 
     dndz_lotss = redshift_helper.dndz_from_z_list(zs, 30, zrange=(0.1, 4.))
-    np.array(dndz_lotss).dump('results/dndz/rg.pickle')
+    np.array(dndz_lotss).dump('results/dndz/hzrg.pickle')
 
     for j in range(len(eboss_zbins)-1):
         minz, maxz = eboss_zbins[j], eboss_zbins[j+1]
@@ -450,14 +453,6 @@ def lotss_selected_xcorr(rpscales, fcut=2):
 
         # convert rp scales to angular scales at median redshift of bin
         theta_scales = cosmo.rp2angle(rps=rpscales, z=np.median(randz['Z']), h_unit=True)
-
-        #fluxthresh = fluxutils.flux_at_obsnu_from_rest_lum(10**best23_ridgeline_lum, -0.8,
-        #                                                        .144, .144, minz, energy=False) / 1000.
-        #print('Flux cut for z>%s is S_144=%s mJy' % (minz, round(fluxthresh, 2)))
-
-        #lotss_bright = lotss_bright[np.where(lotss_bright['r90'] == 1)]
-
-        #zs = sample.redshift_dist(lotss, 5.)
 
 
         autofit, autocf = pipeline.measure_and_fit_autocf(scales=rpscales, datcat=qsoz, randcat=randz, nbootstrap=500, nzbins=5)
@@ -471,9 +466,6 @@ def lotss_selected_xcorr(rpscales, fcut=2):
 
 
         qsoz.remove_column('CHI'), randz.remove_column('CHI')
-        hm = hm_calcs.halomodel(dndz1=dndz_qso_matched, dndz2=dndz_lotss)
-        hm.set_powspec(bias1=autofit['b'])
-        qsomods.append((np.logspace(-3, 0, 100), hm.get_ang_cf(np.logspace(-3, 0, 100))))
 
 
         xcf = twoPointCFs.crosscorr_cats(scales=theta_scales, datcat1=qsoz, datcat2=lotss,
@@ -482,41 +474,36 @@ def lotss_selected_xcorr(rpscales, fcut=2):
         write_pickle('results/cfs/tomo/rg_qso_%s' % j, xcf)
 
         xfit = clustering_fit.fit_xcf(dndz_lotss, xcf, dndz_qso_matched, autocf, model='mass')
+        xfit.update(clustering_fit.fit_xcf(dndz_lotss, xcf, dndz_qso_matched, autocf, model='minmass'))
         xfit['eff_z'] = redshift_helper.effective_z(dndz_lotss, dndz_qso_matched)
         cflist.append(xcf)
         write_pickle('results/fits/tomo/rg_qso_fit_%s' % j, xfit)
 
 
-    rg_autocf = autocorr_rgs(fcut=fcut)
-    rgautofit = clustering_fit.fit_pipeline(dndz_lotss, rg_autocf)
-
-    write_pickle('results/cfs/hzrg_autocf', rg_autocf)
-    write_pickle('results/fits/hzrg_auto', rgautofit)
+    #results.halomass()
 
 
 
-    desi_elg_xcorr(rpscales)
+def haloenergy():
+    z_centers = []
+    import glob
+    qsofitnames = glob.glob('results/fits/tomo/rg_qso*.pickle')
+    fits = []
+    qsozrange = [1., 1.5, 2., 2.5]
+    for name in qsofitnames:
+        thisfit = read_pickle(name)
+        fits.append(thisfit)
+        z_centers.append(thisfit['eff_z'])
 
+    es, elo, ehi = [], [], []
+    for j in range(len(fits)):
+        e = lumfunc.energy_per_halo_zrange(zrange=(qsozrange[j], qsozrange[j+1]), logminmass=fits[j]['Mxmin'], fluxcut=2., fluxmax=1000.)
+        es.append(e)
+        elo.append(e-lumfunc.energy_per_halo_zrange(zrange=(qsozrange[j], qsozrange[j+1]), logminmass=fits[j]['Mxmin'] - fits[j]['sigMxmin'], fluxcut=2., fluxmax=1000.))
+        ehi.append(lumfunc.energy_per_halo_zrange(zrange=(qsozrange[j], qsozrange[j + 1]), logminmass=fits[j]['Mxmin'] + fits[j]['sigMxmin'],
+                                                 fluxcut=2., fluxmax=1000.)-e)
 
-
-    """plt.figure(figsize=(8,7))
-    import lumfunc
-    occs, upoccs, lowoccs = [], [], []
-    for j in range(len(radmasses)):
-        occs.append(lumfunc.occupation_frac(radmasses[j]-0.2, z_centers[j]))
-        upoccs.append(lumfunc.occupation_frac(radmasses[j] - 0.2 + raderrs[j], z_centers[j]))
-        lowoccs.append(lumfunc.occupation_frac(radmasses[j] - 0.2 - raderrs[j], z_centers[j]))
-    plt.scatter(z_centers, occs, c='k')
-    plt.errorbar(z_centers, occs, np.array(upoccs) - np.array(occs), ecolor='k', fmt='none')
-    plt.yscale('log')
-    plt.ylim(1e-3, 3)
-    plt.xlabel('Redshift')
-    plt.ylabel('Duty cycle')
-
-    plt.savefig(plotdir + 'dutycycle.pdf')
-    plt.close('all')"""
-    from plotscripts import results
-    results.halomass()
+    results.energetics(z_centers, es, elo, ehi)
 
 
 
@@ -526,13 +513,17 @@ def lotss_selected_xcorr(rpscales, fcut=2):
 
 
 
-
-def lens_hiz(nside=1024, fcut=2.):
+def lens_hzrg(nside=1024, fcut=2.):
     from mocpy import MOC
     import healpy as hp
     import astropy.units as u
     from lensing_Helper import measure_lensing_xcorr
-    import sample
+
+    oldresults = glob.glob('results/lenscorr/hzrg*')
+    oldresults += glob.glob('results/lensfits/hzrg*')
+    for result in oldresults:
+        os.remove(result)
+
     lotss = sample.lotss_rg_sample(fcut=fcut)
 
     lotssmoc = MOC.from_fits('../data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
@@ -543,12 +534,45 @@ def lens_hiz(nside=1024, fcut=2.):
     mask[idx] = 1.
     #mask = np.ones(hp.nside2npix(nside))
 
-    corr = measure_lensing_xcorr.measure_planck_xcorr(np.logspace(1.7, 3, 10), (lotss['RA'], lotss['DEC']), nside, mask=mask, accurate=True)
-    write_pickle('results/lenscorr/rg', corr)
+    corr = measure_lensing_xcorr.measure_planck_xcorr(np.logspace(2, 3, 10), (lotss['RA'], lotss['DEC']), nside, mask=mask, accurate=True)
+    write_pickle('results/lenscorr/hzrg', corr)
 
     dndz = redshift_helper.dndz_from_z_list(sample.treat_dndz_pdf(lotss), 30, zrange=(0.01, 4.))
     fit = lensing_fit.xcorr_fit_pipeline(dndz, corr)
     fig = fit.pop('plot')
-    write_pickle('results/lensfits/rg', fit)
+    write_pickle('results/lensfits/hzrg', fit)
 
     fig.savefig(plotdir + 'hiz_rg_lensing.pdf')
+
+
+def lens_izrg(nside=1024):
+    from mocpy import MOC
+    import healpy as hp
+    import astropy.units as u
+    from lensing_Helper import measure_lensing_xcorr
+
+    oldresults = glob.glob('results/lenscorr/izrg*')
+    oldresults += glob.glob('results/lensfits/izrg*')
+    for result in oldresults:
+        os.remove(result)
+
+
+    lotss = sample.midz_rg_sample()
+
+    lotssmoc = MOC.from_fits('../data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
+    mask = np.zeros(hp.nside2npix(nside))
+    l, b = hp.pix2ang(nside, np.arange(len(mask)), lonlat=True)
+    ra, dec = coordhelper.galactic_to_equatorial(l, b)
+    idx = lotssmoc.contains(ra*u.deg, dec*u.deg)
+    mask[idx] = 1.
+    #mask = np.ones(hp.nside2npix(nside))
+
+    corr = measure_lensing_xcorr.measure_planck_xcorr(np.logspace(2, 3, 10), (lotss['RA'], lotss['DEC']), nside, mask=mask, accurate=True)
+    write_pickle('results/lenscorr/izrg', corr)
+
+    dndz = redshift_helper.dndz_from_z_list(sample.treat_dndz_pdf(lotss), 7, zrange=(0.3, 1.2))
+    fit = lensing_fit.xcorr_fit_pipeline(dndz, corr)
+    fig = fit.pop('plot')
+    write_pickle('results/lensfits/izrg', fit)
+
+    fig.savefig(plotdir + 'izrg_lensing.pdf')
