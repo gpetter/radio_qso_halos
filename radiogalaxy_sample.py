@@ -6,6 +6,8 @@ import sample
 from SkyTools import coordhelper, fluxutils
 import pandas as pd
 hic = 'firebrick'
+midc = 'orange'
+
 plotdir = '/home/graysonpetter/Dropbox/radioplots/'
 def wisediagram(fcut=2.):
 
@@ -62,7 +64,7 @@ def wisediagram(fcut=2.):
 
 def wisediagram_both():
 
-    fcuts = [2., 5.]
+    fcuts = [3., 5.]
     fig, axs = plt.subplots(nrows=2, sharex=True, figsize=(8, 14))
     plt.xlim(11, 19)
     axs[1].set_xlabel('W2 [Vega mag]')
@@ -114,7 +116,7 @@ def wisediagram_both():
     plt.close('all')
 
 def hostgals(izrgs=False):
-    lotz = sample.lotss_rg_sample()
+    lotz = sample.hzrg_sample()
 
     bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
     bootes = bootes[np.where(bootes['z_best'] < 4)]
@@ -150,7 +152,7 @@ def hostgals(izrgs=False):
 
 
     if izrgs:
-        lotz = sample.midz_rg_sample()
+        lotz = sample.izrg_sample()
         bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
         bootes = bootes[np.where(bootes['z_best'] < 4)]
         bootidx, lotidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (lotz['RA'], lotz['DEC']), 5.,
@@ -189,7 +191,7 @@ def hostgals(izrgs=False):
 
 
 def hzrg_redshift_dist(nbins=20, ndraws=100):
-    rgs = sample.lotss_rg_sample(2)
+    rgs = sample.hzrg_sample(2)
     zrange = (0.1, 4)
 
     f, (ax0, ax1) = plt.subplots(figsize=(8,9), nrows=2, ncols=1, gridspec_kw={'height_ratios': [1, 5]}, sharex=True)
@@ -225,7 +227,7 @@ def hzrg_redshift_dist(nbins=20, ndraws=100):
     plt.close('all')
 
 def izrg_redshift_dist(nbins=5, ndraws=100):
-    rgs = sample.midz_rg_sample()
+    rgs = sample.izrg_sample()
     zrange = (0.3, 1.2)
 
     f, ax = plt.subplots(figsize=(8,7))
@@ -248,9 +250,63 @@ def izrg_redshift_dist(nbins=5, ndraws=100):
     plt.savefig(plotdir + 'izrg_dndz.pdf')
     plt.close('all')
 
+def both_redshift_dist(nbins=30, ndraws=100):
+    zrange = (0.1, 4)
+
+    rgs = sample.hzrg_sample()
+    hibootes = sample.match2bootes(rgs, sep=3)
+    hispecbootes = hibootes[np.where(hibootes['f_zbest'] == 1)]
+    hifinalzs = sample.treat_dndz_pdf(hibootes, ndraws)
+
+
+    rgs = sample.izrg_sample()
+    midbootes = sample.match2bootes(rgs, sep=3)
+    midspecbootes = midbootes[np.where(midbootes['f_zbest'] == 1)]
+    midfinalzs = sample.treat_dndz_pdf(midbootes, ndraws)
+
+
+
+    f, (ax0, ax1) = plt.subplots(figsize=(8,9), nrows=2, ncols=1, gridspec_kw={'height_ratios': [1, 5]}, sharex=True)
+
+
+
+    hist, foo = np.histogram(hifinalzs, bins=nbins, range=zrange)
+    normhist, foo = np.histogram(hifinalzs, bins=nbins, range=zrange, density=True)
+    weight = normhist[0]/hist[0]
+    nphot2nspec = len(hibootes) / len(hispecbootes)
+    ax1.hist(hifinalzs, range=zrange, bins=nbins, weights=weight*np.ones_like(hifinalzs), histtype='step', edgecolor=hic)
+    ax1.hist(hispecbootes['z_best'], range=zrange, bins=nbins, histtype='step', hatch='////',
+             weights=ndraws*weight*np.ones(len(hispecbootes)), edgecolor=hic, alpha=0.3)
+    ax1.text(1.1, 0.03, 'Spectroscopic', color=hic, fontsize=25)
+    ax1.text(2.3, 0.4, 'HzRGs', color='firebrick', fontsize=20)
+    plt.xlabel('Redshift')
+    plt.ylabel('Redshift distribution')
+
+    zs, tomo_dndz, tomo_err = sample.tomographer_dndz()
+    ax0.errorbar(zs, tomo_dndz, yerr=tomo_err, color=hic, fmt='o')
+    ax0.text(2.3, 0.8, r'Tomographer ($b \propto 1/D(z))$', fontsize=15, color=hic)
+    #ax0.hist(finalzs, range=zrange, bins=nbins, weights=weight*finalweights, histtype='step', edgecolor='k')
+    #ax0.axhline(0, ls='--', c='k')
+
+    hist, foo = np.histogram(midfinalzs, bins=nbins, range=zrange)
+    normhist, foo = np.histogram(midfinalzs, bins=nbins, range=zrange, density=True)
+    normhist = normhist[np.where(normhist > 0)]
+    hist = hist[np.where(hist > 0)]
+    weight = normhist[0] / hist[0]
+    nphot2nspec = len(midbootes) / len(midspecbootes)
+    nhi2nlo = len(hibootes) / len(midbootes)
+
+    ax1.hist(midfinalzs, range=zrange, bins=nbins, histtype='step', weights=weight / nhi2nlo * np.ones_like(midfinalzs),
+             ls='dashed', hatch='/////', alpha=0.3, edgecolor='orange')
+    ax1.text(0.1, 0.6, 'IzRGs', color='orange', fontsize=20)
+
+    plt.subplots_adjust(hspace=0)
+    plt.savefig(plotdir + 'rg_dndz.pdf')
+    plt.close('all')
+
 def lum_redshift(izrgs=False, hzrgflux=2., izrgflux=5.):
 
-    lotz = sample.lotss_rg_sample(hzrgflux)
+    lotz = sample.hzrg_sample(hzrgflux)
     s=40
 
     bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
@@ -293,7 +349,7 @@ def lum_redshift(izrgs=False, hzrgflux=2., izrgflux=5.):
                 edgecolors='darkgreen')
 
     if izrgs:
-        lotz = sample.midz_rg_sample(izrgflux)
+        lotz = sample.izrg_sample(izrgflux)
 
 
         bootes = sample.match2bootes(lotz, 3.)
@@ -350,13 +406,13 @@ def lum_redshift(izrgs=False, hzrgflux=2., izrgflux=5.):
     plt.legend()
     plt.xlabel('Redshift')
     plt.ylabel(r'log $L_{150 \ \mathrm{MHz}}$ [W/Hz]')
-    plt.ylim(23.5, 28.5)
-    plt.xlim(0, 3.5)
+    plt.ylim(24., 27.5)
+    plt.xlim(0, 3.)
     plt.savefig(plotdir + 'lum_z.pdf')
     plt.close('all')
 
 
-def heating_contribution():
+def heating_contribution(fcuthi=2., fcutmid=5.):
     fig, ax = plt.subplots(figsize=(8, 7))
     import matplotlib.ticker as mtick
 
@@ -370,13 +426,13 @@ def heating_contribution():
     plt.plot(heat2['lum'], heat2['heat'], c='orange')
     plt.plot(heat3['lum'], heat3['heat'], c='firebrick')
 
-    plt.axvline(np.log10(fluxutils.luminosity_at_rest_nu(5., -0.7, .144, .15, .75, flux_unit=u.mJy, energy=False)),
+    plt.axvline(np.log10(fluxutils.luminosity_at_rest_nu(fcutmid, -0.7, .144, .15, .75, flux_unit=u.mJy, energy=False)),
                 color='purple', ls='dotted')
-    plt.axvline(np.log10(fluxutils.luminosity_at_rest_nu(2., -0.7, .144, .15, 1.25, flux_unit=u.mJy, energy=False)),
+    plt.axvline(np.log10(fluxutils.luminosity_at_rest_nu(fcuthi, -0.7, .144, .15, 1.25, flux_unit=u.mJy, energy=False)),
                 color='cornflowerblue', ls='dotted')
-    plt.axvline(np.log10(fluxutils.luminosity_at_rest_nu(2., -0.7, .144, .15, 1.75, flux_unit=u.mJy, energy=False)),
+    plt.axvline(np.log10(fluxutils.luminosity_at_rest_nu(fcuthi, -0.7, .144, .15, 1.75, flux_unit=u.mJy, energy=False)),
                 color='orange', ls='dotted')
-    plt.axvline(np.log10(fluxutils.luminosity_at_rest_nu(2., -0.7, .144, .15, 2.25, flux_unit=u.mJy, energy=False)),
+    plt.axvline(np.log10(fluxutils.luminosity_at_rest_nu(fcuthi, -0.7, .144, .15, 2.25, flux_unit=u.mJy, energy=False)),
                 color='firebrick', ls='dotted')
 
     plt.text(23, 0.3e32, r'$z=1 - 1.5$', color='cornflowerblue')
@@ -392,9 +448,10 @@ def heating_contribution():
     plt.close('all')
 
 #wisediagram(2.)
-wisediagram_both()
+#wisediagram_both()
+both_redshift_dist()
 #izrg_redshift_dist(7)
 #hostgals(True)
 #redshift_dist(30)
 #lum_redshift(True)
-#heating_contribution()
+#heating_contribution(fcuthi=3.)

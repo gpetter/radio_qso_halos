@@ -45,8 +45,13 @@ def physical_size(angsizes, zs):
 
 def in_lotss_dr2(ras, decs):
 	moc = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
-	good_idxs = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
-	return good_idxs
+	inmoc = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
+
+	rmsmap = hp.read_map('masks/LOTSS_DR2_rms.fits')
+	rms = rmsmap[hp.ang2pix(nside=hp.npix2nside(len(rmsmap)), theta=ras, phi=decs, lonlat=True)]
+	goodrms = rms < 0.2 # mJy
+
+	return inmoc & goodrms
 
 def cat_in_lotss(cat):
 	return cat[in_lotss_dr2(cat['RA'], cat['DEC'])]
@@ -60,15 +65,7 @@ def in_eboss(ras, decs):
 def cat_in_eboss(cat):
 	return cat[in_eboss(cat['RA'], cat['DEC'])]
 
-def lotss_randoms():
-	from SkyTools import random_catalogs
-	randra, randdec = random_catalogs.uniform_sphere(1000, density=True, lat_range=(15, 90))
-	rand = Table()
-	rand['RA'] = randra
-	rand['DEC'] = randdec
-	rand = cat_in_lotss(rand)
-	rand['weight'] = np.ones(len(rand))
-	return rand
+
 
 def in_boss(ras, decs):
 
@@ -101,6 +98,36 @@ def in_vlass_epoch2(ras, decs):
 	good_idxs = moc1.contains(np.array(ras) * u.deg, np.array(decs) * u.deg) | \
 				moc2.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
 	return good_idxs
+
+def in_goodwise(ras, decs):
+	pixweight = Table.read('/home/graysonpetter/ssd/Dartmouth/data/desi_targets/syst_maps/pixweight-1-dark.fits')
+	import healpy as hp
+	w2depth = np.empty(hp.nside2npix(256))
+	w2depth[hp.nest2ring(256, pixweight['HPXPIXEL'])] = pixweight['PSFDEPTH_W2']
+	w2depth = 22.5 - 2.5 * np.log10(5 / np.sqrt(w2depth)) - 3.339
+	w2depth[np.where(np.logical_not(np.isfinite(w2depth)))] = 100.
+	depths = w2depth[hp.ang2pix(256, ras, decs, lonlat=True)]
+
+	lams, betas = coordhelper.equatorial_to_ecliptic(ras, decs)
+
+	return (depths > 17.3) & (betas < 75)
+
+def cat_in_goodwise(cat):
+	return cat[in_goodwise(cat['RA'], cat['DEC'])]
+
+
+def lotss_randoms():
+	from SkyTools import random_catalogs
+	randra, randdec = random_catalogs.uniform_sphere(1000, density=True, lat_range=(15, 90))
+	rand = Table()
+	rand['RA'] = randra
+	rand['DEC'] = randdec
+	rand = cat_in_lotss(rand)
+	rand['weight'] = np.ones(len(rand))
+	rand = cat_in_goodwise(rand)
+	rand = cat_in_lotss(rand)
+	return rand
+
 
 def mask_sample(coords, radio_names):
 
@@ -519,9 +546,11 @@ def desi_lrg(minz=None, maxz=None):
 		rand = rand[np.where(rand['Z'] < maxz)]
 	return dat, rand
 
-def lotss_rg_sample(fcut=2., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=17.5, maxflux=1000, majmax=30):
+def hzrg_sample(fcut=3., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=17.5, maxflux=1000, majmax=30):
 	from SkyTools import fluxutils
 	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
+	lotss = cat_in_lotss(lotss)
+	lotss = cat_in_goodwise(lotss)
 	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
 	lotss = lotss[np.where(lotss['Maj'] < majmax)]
 	#lotss = lotss[np.where((lotss['Jmag'].mask == True) | (np.array(lotss['Jmag'], dtype=float) > jcut) | (lotss['sep_2mass'] > sep_2mass))]
@@ -543,8 +572,10 @@ def lotss_rg_sample(fcut=2., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=
 	lotss['weight'] = np.ones(len(lotss))
 	return lotss
 
-def midz_rg_sample(fcut=5., sep_cw=5,  w2faint=17.5, maxflux=1000, majmax=30):
+def izrg_sample(fcut=5., sep_cw=5,  w2faint=17.5, maxflux=1000, majmax=30):
 	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
+	lotss = cat_in_lotss(lotss)
+	lotss = cat_in_goodwise(lotss)
 	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
 	lotss = lotss[np.where(lotss['Maj'] < majmax)]
 	# detected in WISE to avoid lobes

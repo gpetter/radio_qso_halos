@@ -3,6 +3,7 @@ from SkyTools import fluxutils
 import astropy.units as u
 from halomodelpy import luminosityfunction, hubbleunits, redshift_helper
 import numpy as np
+from scipy.interpolate import interp1d
 from astropy import constants as const
 from halomodelpy import cosmo
 apcosmo = cosmo.apcosmo
@@ -33,15 +34,8 @@ def integrate_lf_model(lftab, lmin, lmax=29):
     return hubbleunits.add_h_to_density(np.trapz(10 ** interp_lf, x=lgrid))
 
 
-"""def density_brighter_than_flux(fluxcut=2.):
-    l150 = np.log10(fluxutils.luminosity_at_rest_nu(fluxcut, -0.7, .144, .15, zcenters, flux_unit=u.mJy, energy=False))
-    dens = []
-    for j in range(len(zcenters)):
-        dens.append(hubbleunits.add_h_to_density(
-            integrate_lf(np.linspace(l150[j], 30, 10), lfs[j]['logL'], lfs[j]['rho_agn'])))
-    return np.array(dens)"""
 
-def interp_density_brighter_than_lum(z, lcut, lmax=29):
+def interp_density_brighter_than_lum(z, lcut, lmax=29, lftype='agn'):
     """
     Interpolate luminosity functions (integrated over lum limits) in redshift bins to any redshift in between
     :param z:
@@ -50,10 +44,10 @@ def interp_density_brighter_than_lum(z, lcut, lmax=29):
     :return:
     """
 
-    ragn05_1 = pd.read_csv('results/kondapally23_agnlf/agn_05_1.csv', names=['lum', 'rho'])
-    ragn1_15 = pd.read_csv('results/kondapally23_agnlf/agn_1_15.csv', names=['lum', 'rho'])
-    ragn15_2 = pd.read_csv('results/kondapally23_agnlf/agn_15_2.csv', names=['lum', 'rho'])
-    ragn2_25 = pd.read_csv('results/kondapally23_agnlf/agn_2_25.csv', names=['lum', 'rho'])
+    ragn05_1 = pd.read_csv('results/kondapally23_agnlf/%s_05_1.csv' % lftype, names=['lum', 'rho'])
+    ragn1_15 = pd.read_csv('results/kondapally23_agnlf/%s_1_15.csv' % lftype, names=['lum', 'rho'])
+    ragn15_2 = pd.read_csv('results/kondapally23_agnlf/%s_15_2.csv' % lftype, names=['lum', 'rho'])
+    ragn2_25 = pd.read_csv('results/kondapally23_agnlf/%s_2_25.csv' % lftype, names=['lum', 'rho'])
     zcenters = np.array([.75, 1.25, 1.75, 2.25])
     tables = [ragn05_1, ragn1_15, ragn15_2, ragn2_25]
     #l150 = np.log10(fluxutils.luminosity_at_rest_nu(fluxcut, -0.7, .144, .15, zcenters, flux_unit=u.mJy, energy=False))
@@ -61,9 +55,10 @@ def interp_density_brighter_than_lum(z, lcut, lmax=29):
     for j in range(len(zcenters)):
         dens.append(integrate_lf_model(tables[j], lcut, lmax))
     dens = np.array(dens)
-    return 10 ** np.interp(z, zcenters, np.log10(dens))
+    return 10 ** interp1d(zcenters, np.log10(dens), fill_value='extrapolate')(z)
+    #return 10 ** np.interp(z, zcenters, np.log10(dens))
 
-def lf_fluxlim_dndz(dndz, fluxcut, fluxmax=None):
+def lf_fluxlim_dndz(dndz, fluxcut, fluxmax=None, lftype='agn'):
     """
     Integrate the luminosity function of your flux limited sample over the redshift distirbution
     :param dndz:
@@ -79,12 +74,12 @@ def lf_fluxlim_dndz(dndz, fluxcut, fluxmax=None):
         l150max = np.log10(fluxutils.luminosity_at_rest_nu(fluxmax, -0.7, .144, .15, zspace, flux_unit=u.mJy, energy=False))
     densities = []
     for j in range(len(zspace)):
-        densities.append(interp_density_brighter_than_lum(zspace[j], l150s[j], l150max[j]))
+        densities.append(interp_density_brighter_than_lum(zspace[j], l150s[j], l150max[j], lftype=lftype))
     return np.trapz(np.array(densities)*dndz[1], x=dndz[0])
 
 
 
-def lf_fluxlim_zrange(zrange, fluxcut, fluxmax=None):
+def lf_fluxlim_zrange(zrange, fluxcut, fluxmax=None, lftype='agn'):
     """
     assume a constant dndz over a given z range tuple
     :param zrange:
@@ -94,21 +89,18 @@ def lf_fluxlim_zrange(zrange, fluxcut, fluxmax=None):
     """
     dndz = redshift_helper.dndz_from_z_list(np.random.uniform(zrange[0], zrange[1], 10000), 10)
 
-    return lf_fluxlim_dndz(dndz=dndz, fluxcut=fluxcut, fluxmax=fluxmax)
-
-def hmf_zrange(zrange, logminmass):
-    dndz = redshift_helper.dndz_from_z_list(np.random.uniform(zrange[0], zrange[1], 10000), 10)
-    return luminosityfunction.int_hmf_z(dndz=dndz, logminmass=logminmass)
+    return lf_fluxlim_dndz(dndz=dndz, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
 
 
-def occupation_dndz(logminmass, dndz, fluxcut, fluxmax=None):
-    galdens = lf_fluxlim_dndz(dndz, fluxcut=fluxcut, fluxmax=fluxmax)
+
+def occupation_dndz(logminmass, dndz, fluxcut, fluxmax=None, lftype='agn'):
+    galdens = lf_fluxlim_dndz(dndz, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
     halodens = luminosityfunction.int_hmf_z(dndz, logminmass=logminmass)
     return galdens / halodens
 
-def occupation_zrange(logminmass, zrange, fluxcut, fluxmax=None):
-    galdens = lf_fluxlim_zrange(zrange, fluxcut, fluxmax)
-    halodens = hmf_zrange(zrange, logminmass)
+def occupation_zrange(logminmass, zrange, fluxcut, fluxmax=None, lftype='agn'):
+    galdens = lf_fluxlim_zrange(zrange, fluxcut, fluxmax, lftype=lftype)
+    halodens = luminosityfunction.hmf_zrange(zrange, logminmass)
     return galdens / halodens
 
 
@@ -204,7 +196,7 @@ def heating_fluxlim_zrange(zrange, fluxcut, fluxmax=None):
 
 def heat_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None):
     heatdens = heating_fluxlim_zrange(zrange=zrange, fluxcut=fluxcut, fluxmax=fluxmax)
-    halodens = hmf_zrange(zrange=zrange, logminmass=logminmass)
+    halodens = luminosityfunction.hmf_zrange(zrange=zrange, logminmass=logminmass)
     return heatdens / halodens
 
 def energy_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None):
@@ -254,18 +246,18 @@ def windheating(zrange, kinetic_frac=0.005):
 
 def windheat_per_halo(zrange, logminmass, fduty, kinetic_frac=0.005):
     heatdens = windheating(zrange, kinetic_frac)
-    halodens = hmf_zrange(zrange, logminmass)
+    halodens = luminosityfunction.hmf_zrange(zrange, logminmass)
     heatperhalo = heatdens / halodens
     return np.log10(heatperhalo)
 
-def type1_windheatperhalo(zrange, logminmass, kinetic_frac=0.005):
+"""def type1_windheatperhalo(zrange, logminmass, kinetic_frac=0.005):
     # quasars live in 12.5 halos, or minimum mass 12.2
-    halodens_type1 = hmf_zrange(zrange=zrange, logminmass=12.2)
+    halodens_type1 = luminosityfunction.hmf_zrange(zrange=zrange, logminmass=12.2)
     # fraction of quasars in halos more massive than M
-    massive_frac = hmf_zrange(zrange=zrange, logminmass=logminmass) / halodens_type1
+    massive_frac = luminosityfunction.hmf_zrange(zrange=zrange, logminmass=logminmass) / halodens_type1
     # energy released in massive halos is massive_frac * energy released by all quasars
     epervolume = massive_frac * windheating(zrange=zrange, kinetic_frac=kinetic_frac)
-    return np.log10(epervolume / hmf_zrange(zrange=zrange, logminmass=logminmass))
+    return np.log10(epervolume / luminosityfunction.hmf_zrange(zrange=zrange, logminmass=logminmass))"""
 
 
 def hod_density_above_m(hodparams, fduty, eff_z, logm_min):
@@ -281,6 +273,33 @@ def hod_density_above_m(hodparams, fduty, eff_z, logm_min):
 
 
 
+
+def desiqso_hod_dens(z, logminmass=12.):
+    qsohod = pd.read_csv('results/hod/desi_qso/desi_qso_hod.csv', names=['M', 'hod'])
+    sortidx = np.argsort(qsohod['M'])
+    m, hod = np.array(qsohod['M'][sortidx]), np.array(qsohod['hod'][sortidx])
+    moremassive = np.where(m>10**logminmass)[0]
+    m, hod = m[moremassive], hod[moremassive]
+    # integrate hod * hmf
+    return hubbleunits.add_h_to_density(np.trapz(hod * cosmo.hmf_z(np.log10(m), z), x=np.log(m)))
+
+def desiqso_massive_frac(z, logminmass):
+    totaldens = desiqso_hod_dens(z, logminmass=12.)
+    massivedens = desiqso_hod_dens(z, logminmass=logminmass)
+    return massivedens / totaldens
+
+def type1_windheatperhalo(zrange, logminmass, kinetic_frac=0.005):
+    agn_windenergy_per_volume = windheating(zrange, kinetic_frac=kinetic_frac)
+    qso_frac_all_agn = luminosityfunction.qso_luminosity_density(45, 1.25) / luminosityfunction.qso_luminosity_density(
+        40, 1.25)
+    qso_frac_in_massive_halos = desiqso_massive_frac(1.25, logminmass)
+    halodens = luminosityfunction.hmf_zrange(zrange, logminmass)
+
+    return np.log10(agn_windenergy_per_volume * qso_frac_all_agn * qso_frac_in_massive_halos / halodens)
+
+
+#def desiqso_massive_frac_zrange(zrange):
+    #for z in np.linspace(zrange[0], zrange[1], 10):
 
 
 

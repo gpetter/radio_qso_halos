@@ -332,7 +332,7 @@ def autocorr_hzrgs(rpscales):
     for name in old:
         os.remove(name)
 
-    lotss = sample.lotss_rg_sample()
+    lotss = sample.hzrg_sample()
     rand = sample.lotss_randoms()
     zs = sample.treat_dndz_pdf(lotss)
     dndz_lotss = redshift_helper.dndz_from_z_list(zs, 30, zrange=(0.1, 4))
@@ -348,6 +348,7 @@ def autocorr_hzrgs(rpscales):
     fit['eff_z'] = eff_z
     fit.pop('plot')
     write_pickle('results/fits/auto/hzrg', fit)
+    results.autocorrs()
 
 
 def autocorr_izrgs(rpscales):
@@ -358,7 +359,7 @@ def autocorr_izrgs(rpscales):
         os.remove(name)
 
 
-    lotss = sample.midz_rg_sample()
+    lotss = sample.izrg_sample()
     rand = sample.lotss_randoms()
     zs = sample.treat_dndz_pdf(lotss)
     dndz_lotss = redshift_helper.dndz_from_z_list(zs, 7, zrange=(0.3, 1.2))
@@ -374,6 +375,7 @@ def autocorr_izrgs(rpscales):
     fit['eff_z'] = eff_z
     fit.pop('plot')
     write_pickle('results/fits/auto/izrg', fit)
+    results.autocorrs()
 
 
 
@@ -387,7 +389,7 @@ def desi_elg_xcorr(rpscales):
         os.remove(result)
     zbins = np.array([1., 1.5])
     zcenters = np.array([1.25])
-    lotss = sample.lotss_rg_sample()
+    lotss = sample.hzrg_sample()
     lotss = sample.cat_in_desi_elg(lotss)
     lotssrand = sample.lotss_randoms()
     lotssrand = sample.cat_in_desi_elg(lotssrand)
@@ -398,6 +400,10 @@ def desi_elg_xcorr(rpscales):
     dndz_lotss = redshift_helper.dndz_from_z_list(zs, 30, zrange=(0.1, 4.))
     for j in range(len(zcenters)):
         elg, rand = sample.desi_elg(zbins[j], zbins[j+1])
+        elg = sample.cat_in_lotss(elg)
+        rand = sample.cat_in_lotss(rand)
+        elg = sample.cat_in_goodwise(elg)
+        rand = sample.cat_in_goodwise(rand)
         theta_scales = cosmo.rp2angle(rps=rpscales, z=np.median(zcenters[j]), h_unit=True)
         autocf = twoPointCFs.autocorr_cat(rpscales, elg, rand)
         autocf['wp_err'] = autocf['wp_poisson_err']
@@ -418,12 +424,14 @@ def desi_elg_xcorr(rpscales):
         xfit.update(clustering_fit.fit_xcf(dndz_lotss, xcf, dndz_elg_matched, autocf, model='minmass'))
         xfit['eff_z'] = redshift_helper.effective_z(dndz_lotss, dndz_elg_matched)
         write_pickle('results/fits/tomo/rg_elg', xfit)
+    results.cross_cfs()
+    results.halomass()
 
 
 
 
 
-def hzrg_xcorr(rpscales, fcut=2):
+def hzrg_xcorr(rpscales):
     oldresults = glob.glob('results/cfs/tomo/rg_qso*.pickle')
     oldresults += glob.glob('results/fits/tomo/rg_qso*.pickle')
     oldresults += glob.glob('results/dndz/hzrg.pickle')
@@ -435,11 +443,13 @@ def hzrg_xcorr(rpscales, fcut=2):
 
     qso, rand = sample.eboss_qso()
 
-    lotss = sample.lotss_rg_sample(fcut=fcut)
+    lotss = sample.hzrg_sample()
     lotss = sample.cat_in_eboss(lotss)
 
     qso = sample.cat_in_lotss(qso)
     rand = sample.cat_in_lotss(rand)
+    qso = sample.cat_in_goodwise(qso)
+    rand = sample.cat_in_goodwise(rand)
 
     zs = sample.treat_dndz_pdf(lotss)
 
@@ -479,31 +489,8 @@ def hzrg_xcorr(rpscales, fcut=2):
         cflist.append(xcf)
         write_pickle('results/fits/tomo/rg_qso_fit_%s' % j, xfit)
 
-
-    #results.halomass()
-
-
-
-def haloenergy():
-    z_centers = []
-    import glob
-    qsofitnames = glob.glob('results/fits/tomo/rg_qso*.pickle')
-    fits = []
-    qsozrange = [1., 1.5, 2., 2.5]
-    for name in qsofitnames:
-        thisfit = read_pickle(name)
-        fits.append(thisfit)
-        z_centers.append(thisfit['eff_z'])
-
-    es, elo, ehi = [], [], []
-    for j in range(len(fits)):
-        e = lumfunc.energy_per_halo_zrange(zrange=(qsozrange[j], qsozrange[j+1]), logminmass=fits[j]['Mxmin'], fluxcut=2., fluxmax=1000.)
-        es.append(e)
-        elo.append(e-lumfunc.energy_per_halo_zrange(zrange=(qsozrange[j], qsozrange[j+1]), logminmass=fits[j]['Mxmin'] - fits[j]['sigMxmin'], fluxcut=2., fluxmax=1000.))
-        ehi.append(lumfunc.energy_per_halo_zrange(zrange=(qsozrange[j], qsozrange[j + 1]), logminmass=fits[j]['Mxmin'] + fits[j]['sigMxmin'],
-                                                 fluxcut=2., fluxmax=1000.)-e)
-
-    results.energetics(z_centers, es, elo, ehi)
+    results.cross_cfs()
+    results.halomass()
 
 
 
@@ -513,7 +500,9 @@ def haloenergy():
 
 
 
-def lens_hzrg(nside=1024, fcut=2.):
+
+
+def lens_hzrg(nside=1024):
     from mocpy import MOC
     import healpy as hp
     import astropy.units as u
@@ -524,7 +513,7 @@ def lens_hzrg(nside=1024, fcut=2.):
     for result in oldresults:
         os.remove(result)
 
-    lotss = sample.lotss_rg_sample(fcut=fcut)
+    lotss = sample.hzrg_sample()
 
     lotssmoc = MOC.from_fits('../data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
     mask = np.zeros(hp.nside2npix(nside))
@@ -557,7 +546,7 @@ def lens_izrg(nside=1024):
         os.remove(result)
 
 
-    lotss = sample.midz_rg_sample()
+    lotss = sample.izrg_sample()
 
     lotssmoc = MOC.from_fits('../data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
     mask = np.zeros(hp.nside2npix(nside))
@@ -576,3 +565,77 @@ def lens_izrg(nside=1024):
     write_pickle('results/lensfits/izrg', fit)
 
     fig.savefig(plotdir + 'izrg_lensing.pdf')
+
+
+
+def duty_cycle():
+    fluxcuthi = 2.
+    fluxcutmid = 5.
+    fluxmax = 1000.
+
+    import glob
+
+    izrgfit = read_pickle('results/fits/auto/izrg.pickle')
+
+    dutyizrg = lumfunc.occupation_zrange(izrgfit['Mmin'], (0.5, 1.), fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg')
+    izrgloerr = dutyizrg - lumfunc.occupation_zrange(izrgfit['Mmin']-izrgfit['sigMmin'], (0.5, 1.),
+                                                     fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg')
+    izrghierr = lumfunc.occupation_zrange(izrgfit['Mmin'] + izrgfit['sigMmin'], (0.5, 1.),
+                                                     fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg') - dutyizrg
+
+    izrgstuff = [izrgfit['eff_z'], dutyizrg, izrgloerr, izrghierr]
+
+    z_centers = []
+
+    qsofitnames = glob.glob('results/fits/tomo/rg_qso*.pickle')
+    fits = []
+    qsozrange = [1., 1.5, 2., 2.5]
+    for name in qsofitnames:
+        thisfit = read_pickle(name)
+        fits.append(thisfit)
+        z_centers.append(thisfit['eff_z'])
+
+    duty, loerr, hierr = [], [], []
+    for j in range(len(fits)):
+        fduty = lumfunc.occupation_zrange(logminmass=fits[j]['Mxmin'], zrange=(qsozrange[j], qsozrange[j+1]),
+                                          fluxcut=fluxcuthi, fluxmax=1000.)
+        duty.append(fduty)
+        loerr.append(fduty-lumfunc.occupation_zrange(zrange=(qsozrange[j], qsozrange[j+1]), logminmass=fits[j]['Mxmin'] - fits[j]['sigMxmin'], fluxcut=fluxcuthi, fluxmax=fluxmax))
+        hierr.append(lumfunc.occupation_zrange(zrange=(qsozrange[j], qsozrange[j + 1]), logminmass=fits[j]['Mxmin'] + fits[j]['sigMxmin'],
+                                                 fluxcut=fluxcuthi, fluxmax=1000.)-fduty)
+
+    results.dutycycle(izrgstuff, z_centers, duty, loerr, hierr)
+
+def haloenergy():
+    z_centers = []
+    import glob
+    qsofitnames = glob.glob('results/fits/tomo/rg_qso*.pickle')
+    fits = []
+    qsozrange = [1., 1.5, 2., 2.5]
+    for name in qsofitnames:
+        thisfit = read_pickle(name)
+        fits.append(thisfit)
+        z_centers.append(thisfit['eff_z'])
+
+    logminmass = 12.8
+    kineticfraclow, kineticfrachi = 0.001, 0.005
+    allzranges = [0.0, 0.5, 1., 1.5, 2., 2.5]
+    qsowindinfo = []
+    for j in range(len(allzranges)-1):
+        qsowindinfo.append([])
+        qsowindlow = lumfunc.type1_windheatperhalo((allzranges[j], allzranges[j+1]),  logminmass=logminmass,
+                                                   kinetic_frac=kineticfraclow)
+        qsowindhigh = lumfunc.type1_windheatperhalo((allzranges[j], allzranges[j + 1]), logminmass=logminmass,
+                                                   kinetic_frac=kineticfrachi)
+        qsowindinfo[j].append([allzranges[j], allzranges[j+1]])
+        qsowindinfo[j].append([qsowindlow, qsowindhigh])
+
+    es, elo, ehi = [], [], []
+    for j in range(len(fits)):
+        e = lumfunc.energy_per_halo_zrange(zrange=(qsozrange[j], qsozrange[j+1]), logminmass=fits[j]['Mxmin'], fluxcut=2., fluxmax=1000.)
+        es.append(e)
+        elo.append(e-lumfunc.energy_per_halo_zrange(zrange=(qsozrange[j], qsozrange[j+1]), logminmass=fits[j]['Mxmin'] - fits[j]['sigMxmin'], fluxcut=2., fluxmax=1000.))
+        ehi.append(lumfunc.energy_per_halo_zrange(zrange=(qsozrange[j], qsozrange[j + 1]), logminmass=fits[j]['Mxmin'] + fits[j]['sigMxmin'],
+                                                 fluxcut=2., fluxmax=1000.)-e)
+
+    results.energetics(z_centers, es, elo, ehi, qsowindinfo)
