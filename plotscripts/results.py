@@ -28,6 +28,7 @@ def halomass(elg=False):
     radmasses = [fit['Mx'] for fit in fits]
     raderrs = [fit['sigMx'] for fit in fits]
 
+    hzrgautofit = read_pickle('results/fits/auto/hzrg.pickle')
 
     hzrglensfit = read_pickle('results/lensfits/hzrg.pickle')
     izrgfit = read_pickle('results/fits/auto/izrg.pickle')
@@ -49,25 +50,25 @@ def halomass(elg=False):
     #plt.fill_between(z_centers, qsomasses - qsoerrs, qsomasses + qsoerrs, alpha=0.5, color='royalblue')
     plt.text(1.5, 12.35, 'eBOSS QSOs', color='royalblue', fontsize=15)
     from halomodelpy import halo_growthrate
-    zgrid, ms = halo_growthrate.evolve_halo_mass(12.5, 2.5, 0.01)
+    zgrid, ms = halo_growthrate.evolve_halo_mass(12.5, 3, 0.01)
     plt.plot(zgrid, ms, c='k', ls='--', alpha=0.3)
-    zgrid, ms = halo_growthrate.evolve_halo_mass(13., 2.5, 0.01)
+    zgrid, ms = halo_growthrate.evolve_halo_mass(13., 3, 0.01)
     plt.plot(zgrid, ms, c='k', ls='--', alpha=0.3)
     plt.text(0.1, 13.3, 'Mean', rotation=-18, alpha=0.5)
 
-    zgrid, ms = halo_growthrate.evolve_halo_mass(12.5, 2.5, 0.01, wantmean=False)
+    zgrid, ms = halo_growthrate.evolve_halo_mass(12.5, 3, 0.01, wantmean=False)
     plt.plot(zgrid, ms, c='k', ls='--', alpha=0.1)
-    zgrid, ms = halo_growthrate.evolve_halo_mass(13., 2.5, 0.01, wantmean=False)
+    zgrid, ms = halo_growthrate.evolve_halo_mass(13., 3, 0.01, wantmean=False)
     plt.plot(zgrid, ms, c='k', ls='--', alpha=0.1)
     plt.text(0.1, 12.9, 'Median growth rate', rotation=-12, alpha=0.2)
 
-    zranges = [1, 1.5, 2, 2.5]
+    zranges = [1, 1.5, 2, 3]
     for j in range(3):
         qsoauto = read_pickle('results/fits/tomo/qso_fit_%s.pickle' % j)
         plt.fill_between([zranges[j], zranges[j+1]], (qsoauto['M'] - qsoauto['sigM'])*np.ones(2), (qsoauto['M'] + qsoauto['sigM'])*np.ones(2), color='cornflowerblue', edgecolor='none')
 
-    #plt.scatter(1.6, rgautofit['M'], c='k')
-    #plt.errorbar(1.6, rgautofit['M'], yerr=rgautofit['sigM'], ecolor='k', fmt='none', label='HzRG auto')
+    plt.scatter(hzrgautofit['eff_z'], hzrgautofit['M'], c='k')
+    plt.errorbar(hzrgautofit['eff_z'], hzrgautofit['M'], yerr=hzrgautofit['sigM'], ecolor='k', fmt='none', label='HzRG auto')
 
 
 
@@ -84,7 +85,7 @@ def halomass(elg=False):
     plt.errorbar(izrgfit['eff_z'], izrgfit['M'], izrgfit['sigM'], color='orange', fmt='o', label='IzRGs')
 
     #plt.fill_between(laurentzspace, mlit[2], mlit[1], color='seagreen', alpha=0.2, edgecolor='none')
-    plt.xlim(0, 2.5)
+    plt.xlim(0, 3.)
     plt.fill_between([0, 0.1], [14, 14], [15, 15], color='maroon', alpha=0.2, edgecolor='none')
     plt.text(0.15, 14.3, 'Clusters', color='maroon', alpha=0.5)
 
@@ -202,25 +203,78 @@ def hzrg_lenscorr():
     plt.savefig(plotdir+'hzrglensing.pdf')
     plt.close('all')
 
-def autocorrs():
-    fig, (ax, ax2) = plt.subplots(2, 1, figsize=(8, 14))
+def autocorrs(hod=True):
+    fig, (ax, ax2) = plt.subplots(2, 1, figsize=(8, 14), sharex=True)
+    plt.xlim(5e-3, 1e0)
+    plt.xlabel(r'Separation $\theta$ [deg]')
     hzrgfit = read_pickle('results/fits/auto/hzrg.pickle')
     hzrgcf = read_pickle('results/cfs/auto/hzrg.pickle')
 
     izrgfit = read_pickle('results/fits/auto/izrg.pickle')
     izrgcf = read_pickle('results/cfs/auto/izrg.pickle')
 
-    ax.errorbar(izrgcf['theta'], izrgcf['w_theta'], izrgcf['w_err'], fmt='o', color=izc)
+    linidx, nonlinidx = izrgcf['linidx'], izrgcf['nonlinidx']
+    lintheta, lincf, linerr = izrgcf['theta'][linidx], izrgcf['w_theta'][linidx], izrgcf['w_err'][linidx]
+    nonlintheta, nonlincf, nonlinerr = izrgcf['theta'][nonlinidx], izrgcf['w_theta'][nonlinidx], izrgcf['w_err'][nonlinidx]
+
+    izrglensfit = read_pickle('results/lensfits/hzrg.pickle')
+    lensb, lenssigb = izrglensfit['b'], izrglensfit['sigb']
+    ax.fill_between(izrgfit['modscales'], ((lensb - lenssigb) ** 2) * izrgfit['dmcf'],
+                     ((lensb + lenssigb) ** 2) * izrgfit['dmcf'], color=izc, alpha=0.1, edgecolor='none')
+
+    ax.errorbar(lintheta, lincf, linerr, fmt='o', color=izc)
+    ax.errorbar(nonlintheta, nonlincf, nonlinerr, fmt='o', markerfacecolor='none', markeredgecolor=izc, ecolor=izc)
     ax.plot(izrgfit['modscales'], izrgfit['dmcf'], ls='dotted', c='k')
+    ax.text(izrgfit['modscales'][int(len(izrgfit['dmcf']) / 2)],
+             izrgfit['dmcf'][int(len(izrgfit['dmcf']) / 2)] / 2., 'Matter', rotation=-12, fontsize=15)
     ax.plot(izrgfit['modscales'], izrgfit['autofitcf'], ls='dashed', c=izc)
     ax.set_yscale('log')
     ax.set_xscale('log')
+    ax.set_ylabel(r'Autocorrelation function $w(\theta)$')
+    ax.text(.65, .9, 'IzRG Clustering', transform=ax.transAxes, fontsize=20, color=izc)
 
-    ax2.errorbar(hzrgcf['theta'], hzrgcf['w_theta'], hzrgcf['w_err'], fmt='o', color=hizc)
+    if hod:
+        modthetas = np.logspace(-2.5, 0., 100)
+        from halomodelpy import hm_calcs, mcmc
+        dndz = read_pickle('results/dndz/izrg.pickle')
+        izrgchain = read_pickle('results/hod/izrg.pickle')['chain']
+        hm = hm_calcs.halomodel(dndz)
+
+        newchain = izrgchain[np.random.choice(len(izrgchain), 100, replace=False)]
+        for j in range(len(newchain)):
+            paramset = list(newchain[j])
+            hm.set_powspec(hodparams=mcmc.parse_params(paramset, ['M', 'sigM', 'M1', 'alpha']))
+            cf = hm.get_ang_cf(modthetas)
+            ax.plot(modthetas, cf, alpha=0.1, rasterized=True, c=izc, ls='dotted')
+
+    hzrglensfit = read_pickle('results/lensfits/hzrg.pickle')
+    lensb, lenssigb = hzrglensfit['b'], hzrglensfit['sigb']
+
+    linidx, nonlinidx = hzrgcf['linidx'], hzrgcf['nonlinidx']
+    lintheta, lincf, linerr = hzrgcf['theta'][linidx], hzrgcf['w_theta'][linidx], hzrgcf['w_err'][linidx]
+    nonlintheta, nonlincf, nonlinerr = hzrgcf['theta'][nonlinidx], hzrgcf['w_theta'][nonlinidx], hzrgcf['w_err'][
+        nonlinidx]
+
+
+
+    ax2.errorbar(lintheta, lincf, linerr, fmt='o', color=hizc)
+    ax2.errorbar(nonlintheta, nonlincf, nonlinerr, fmt='o', markerfacecolor='none', markeredgecolor=hizc, ecolor=hizc)
     ax2.plot(hzrgfit['modscales'], hzrgfit['dmcf'], ls='dotted', c='k')
+    ax2.fill_between(hzrgfit['modscales'], ((lensb-lenssigb) ** 2) * hzrgfit['dmcf'],
+                     ((lensb+lenssigb) ** 2) * hzrgfit['dmcf'], color=hizc, alpha=0.1, edgecolor='none')
+
+
+
+
+
+    ax2.text(hzrgfit['modscales'][int(len(hzrgfit['dmcf'])/2)],
+             hzrgfit['dmcf'][int(len(hzrgfit['dmcf'])/2)] / 2., 'Matter', rotation=-12, fontsize=15)
     ax2.plot(hzrgfit['modscales'], hzrgfit['autofitcf'], ls='dashed', c=hizc)
     ax2.set_yscale('log')
     ax2.set_xscale('log')
+    ax2.set_ylabel(r'Autocorrelation function $w(\theta)$')
+    ax2.set_ylim(2e-4, 2e0)
+    ax2.text(.65, .9, 'HzRG Clustering', transform=ax2.transAxes, fontsize=20, color=hizc)
 
 
     plt.subplots_adjust(hspace=0)
@@ -247,7 +301,7 @@ def dutycycle(izrgresult, zcenters, duty, loerr, hierr):
     plt.savefig(plotdir + 'dutycycle.pdf')
     plt.close('all')
 
-def energetics(zs, e, elo, ehi, qsowindinfo):
+def energetics(izrgresult, zs, e, elo, ehi, qsowindinfo):
     import lumfunc
     plt.figure(figsize=(8, 7))
 
@@ -255,12 +309,11 @@ def energetics(zs, e, elo, ehi, qsowindinfo):
     bindingenergy = lumfunc.halobinding_energy(13., np.linspace(0., 4, 30))
     plt.plot(np.linspace(0., 4., 30), bindingenergy, c='grey', ls='dotted')
     plt.axhline(thermal2kev, c='grey', ls='--')
-    plt.text(1., thermal2kev+0.15, r'$U_{\mathrm{th}}: M_h = 10^{13} \ h^{-1} M_{\odot}$,', color='grey')
-    plt.text(1., thermal2kev - 0.2, r'$T$ = 2 keV, cosmic $f_{b}$', color='grey')
-    plt.text(1., bindingenergy[15] + 0.05, '$U_{\mathrm{bind, gas}}$', color='grey', rotation=4)
+    plt.text(0.2, thermal2kev+0.1, r'$U_{\mathrm{th}}: M_h = 10^{13} \ h^{-1} M_{\odot}$,', color='grey')
+    plt.text(0.2, thermal2kev - 0.15, r'$T$ = 2 keV, cosmic $f_{b}$', color='grey')
+    plt.text(0.2, bindingenergy[2] + 0.05, '$U_{\mathrm{bind, gas}}$', color='grey', rotation=4)
 
-
-
+    plt.errorbar([izrgresult[0]], [izrgresult[1]], yerr=[[izrgresult[2]], [izrgresult[3]]], color=izc, fmt='o')
 
     #maxqsowind = lumfunc.type1_windheatperhalo((1., 2.), 13., 0.005)
     #minqsowind = lumfunc.type1_windheatperhalo((1., 2.), 13., 0.0001)
@@ -294,6 +347,7 @@ def energetics(zs, e, elo, ehi, qsowindinfo):
     plt.ylabel(r'log$\langle$ Heating energy per halo $\rangle$ [erg]')
     plt.xlabel('Redshift')
     plt.xlim(0, 2.5)
+    plt.ylim(57, 62)
     plt.legend(fontsize=10, loc='lower right')
     plt.savefig(plotdir + 'energetics.pdf')
     plt.close('all')
@@ -302,4 +356,4 @@ def energetics(zs, e, elo, ehi, qsowindinfo):
 #halomass()
 #cross_cfs()
 #hzrg_lenscorr()
-#autocorrs()
+autocorrs()

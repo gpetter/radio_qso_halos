@@ -43,7 +43,19 @@ def physical_size(angsizes, zs):
 	phys_sizes = (angsizes * u.arcsec).to(u.rad) * ang_diam_dists
 	return phys_sizes
 
-def in_lotss_dr2(ras, decs):
+def stardensmap():
+	pixweight = Table.read('../data/desi_targets/syst_maps/pixweight-1-dark.fits')
+
+	stars = np.empty(hp.nside2npix(256))
+	stars[hp.nest2ring(256, pixweight['HPXPIXEL'])] = pixweight['STARDENS']
+	return stars
+
+def in_cmblensingmask(ras, decs):
+	lensmask = hp.read_map('/home/graysonpetter/ssd/Dartmouth/data/lensing_maps/PlanckPR4/derived/1024/mask.fits')
+	return lensmask[hp.ang2pix(nside=hp.npix2nside(len(lensmask)), theta=ras, phi=decs, lonlat=True)] == 1
+
+
+def in_lotss_dr2(ras, decs, galcut=30):
 	moc = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
 	inmoc = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
 
@@ -51,7 +63,11 @@ def in_lotss_dr2(ras, decs):
 	rms = rmsmap[hp.ang2pix(nside=hp.npix2nside(len(rmsmap)), theta=ras, phi=decs, lonlat=True)]
 	goodrms = rms < 0.2 # mJy
 
-	return inmoc & goodrms
+	l, b = coordhelper.equatorial_to_galactic(ras, decs)
+	goodbs = np.abs(b) > galcut
+
+
+	return inmoc & goodrms & goodbs
 
 def cat_in_lotss(cat):
 	return cat[in_lotss_dr2(cat['RA'], cat['DEC'])]
@@ -546,7 +562,7 @@ def desi_lrg(minz=None, maxz=None):
 		rand = rand[np.where(rand['Z'] < maxz)]
 	return dat, rand
 
-def hzrg_sample(fcut=3., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=17.5, maxflux=1000, majmax=30):
+def hzrg_sample(fcut=2., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=17.5, maxflux=1000, majmax=30):
 	from SkyTools import fluxutils
 	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
 	lotss = cat_in_lotss(lotss)

@@ -64,7 +64,7 @@ def wisediagram(fcut=2.):
 
 def wisediagram_both():
 
-    fcuts = [3., 5.]
+    fcuts = [2., 5.]
     fig, axs = plt.subplots(nrows=2, sharex=True, figsize=(8, 14))
     plt.xlim(11, 19)
     axs[1].set_xlabel('W2 [Vega mag]')
@@ -84,6 +84,8 @@ def wisediagram_both():
         star = comb[np.where(comb['Overall_class'] == 'SFG')]
         midz = comb[np.where((comb['z_best'] > 0.5) & (comb['z_best'] < 1.))]
         hiz = comb[np.where(comb['z_best'] > 1)]
+
+
 
         axs[j].scatter(lowz['W2_cw'], lowz['W1_cw'] - lowz['W2_cw'], s=20, c='none', edgecolors='cornflowerblue', marker='o')
 
@@ -447,11 +449,34 @@ def heating_contribution(fcuthi=2., fcutmid=5.):
     plt.savefig('/home/graysonpetter/Dropbox/radioplots/heating_func.pdf')
     plt.close('all')
 
+def rg_fraction():
+    bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
+    hiz = bootes[np.where((bootes['z_best'] > 1) & (bootes['z_best'] < 3))]
+    tot_hzrgs = len(hiz[np.where((hiz['Overall_class'] == "LERG") | (hiz["Overall_class"] == "HERG"))])
+
+    iz = bootes[np.where((bootes['z_best'] > .5) & (bootes['z_best'] < 1))]
+    tot_izrgs = len(iz[np.where((iz['Overall_class'] == "LERG") | (iz["Overall_class"] == "HERG"))])
+
+
+
+
+    bright_hzrgs = (hiz[np.where((hiz['S_150MHz'] > 0.002))])
+    bright_izrgs = (iz[np.where(iz['S_150MHz'] > 0.005)])
+
+    print('Fraction of z>1 radio galaxies selected by flux cut is: %s' % (len(bright_hzrgs) / tot_hzrgs))
+    print('Fraction of 0.5<z<1 radio galaxies selected by flux cut is: %s' % (len(bright_izrgs) / tot_izrgs))
+
+    hisfgs = bright_hzrgs[np.where(bright_hzrgs['Overall_class'] == "SFG")]
+    isfgs = bright_izrgs[np.where(bright_izrgs['Overall_class'] == "SFG")]
+    print('Fraction of bright HzRGs are actually SFGs: %s' % (len(hisfgs)/len(bright_hzrgs)))
+    print('Fraction of bright IzRGs are actually SFGs: %s' % (len(isfgs) / len(bright_izrgs)))
+
+rg_fraction()
 #wisediagram(2.)
 #wisediagram_both()
-both_redshift_dist()
+#both_redshift_dist()
 #izrg_redshift_dist(7)
 #hostgals(True)
 #redshift_dist(30)
-#lum_redshift(True)
+#lum_redshift(True, hzrgflux=3., izrgflux=5.)
 #heating_contribution(fcuthi=3.)

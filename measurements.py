@@ -325,6 +325,19 @@ def fluxcut(scales):
     plt.savefig(plotdir + 'eboss_lum.pdf')
     plt.close('all')
 
+def linear_cf(cf, eff_z):
+    linear_thetas = cosmo.rp2angle(np.array([5., 25.]), z=eff_z)
+    mintheta, maxtheta = linear_thetas[0], linear_thetas[1]
+    linear_idxs = np.where((cf['theta_bins'] >= mintheta) & (cf['theta_bins'] <= maxtheta))[0]
+    lincf = {}
+    lincf['theta_bins'] = cf['theta_bins'][linear_idxs]
+    lincf['theta'] = cf['theta'][linear_idxs[:-1]]
+    lincf['w_theta'] = cf['w_theta'][linear_idxs[:-1]]
+    lincf['w_err'] = cf['w_err'][linear_idxs[:-1]]
+    cf['linidx'] = linear_idxs[:-1]
+    cf['nonlinidx'] = np.where(np.logical_not(np.in1d(np.arange(len(cf['theta'])), cf['linidx'])))[0]
+    return cf, lincf
+
 def autocorr_hzrgs(rpscales):
     old = glob.glob('results/cfs/auto/hzrg*')
     old += glob.glob('results/fits/auto/hzrg*')
@@ -337,14 +350,21 @@ def autocorr_hzrgs(rpscales):
     zs = sample.treat_dndz_pdf(lotss)
     dndz_lotss = redshift_helper.dndz_from_z_list(zs, 30, zrange=(0.1, 4))
     np.array(dndz_lotss).dump('results/dndz/hzrg.pickle')
-    eff_z = np.median(dndz_lotss)
+    eff_z = np.median(zs)
     thetabins = cosmo.rp2angle(rpscales, eff_z, True)
 
+
+
+
     cf = twoPointCFs.autocorr_cat(thetabins, lotss, rand, nbootstrap=500)
+
+    cf, lincf = linear_cf(cf, eff_z)
+
     cf.pop('plot')
     write_pickle('results/cfs/auto/hzrg', cf)
 
-    fit = clustering_fit.fit_pipeline(dndz_lotss, cf)
+
+    fit = clustering_fit.fit_pipeline(dndz_lotss, lincf)
     fit['eff_z'] = eff_z
     fit.pop('plot')
     write_pickle('results/fits/auto/hzrg', fit)
@@ -364,20 +384,33 @@ def autocorr_izrgs(rpscales):
     zs = sample.treat_dndz_pdf(lotss)
     dndz_lotss = redshift_helper.dndz_from_z_list(zs, 7, zrange=(0.3, 1.2))
     np.array(dndz_lotss).dump('results/dndz/izrg.pickle')
-    eff_z = np.median(dndz_lotss)
+    eff_z = np.median(zs)
     thetabins = cosmo.rp2angle(rpscales, eff_z, True)
 
     cf = twoPointCFs.autocorr_cat(thetabins, lotss, rand, nbootstrap=500)
+    cf, lincf = linear_cf(cf, eff_z)
+
     cf.pop('plot')
     write_pickle('results/cfs/auto/izrg', cf)
 
-    fit = clustering_fit.fit_pipeline(dndz_lotss, cf)
+    fit = clustering_fit.fit_pipeline(dndz_lotss, lincf)
     fit['eff_z'] = eff_z
     fit.pop('plot')
     write_pickle('results/fits/auto/izrg', fit)
     results.autocorrs()
 
+def izrghod_fit(nwalkers=10, niter=1000, freeparam_ids=['M', 'M1', 'alpha'], inital_params=[12.7, 13.1, .8]):
+    old = glob.glob('results/hod/izrg*')
+    for name in old:
+        os.remove(name)
 
+    izrgcf = read_pickle('results/cfs/auto/izrg.pickle')
+    dndz = read_pickle('results/dndz/izrg.pickle')
+
+    fitmc = clustering_fit.fitmcmc(nwalkers=nwalkers, niter=niter, dndz=dndz, cf=izrgcf,
+                                   freeparam_ids=freeparam_ids, initial_params=inital_params)
+    fitmc.pop('corner')
+    write_pickle('results/hod/izrg', fitmc)
 
 
 
@@ -439,7 +472,7 @@ def hzrg_xcorr(rpscales):
         os.remove(result)
     cflist = []
 
-    eboss_zbins = np.linspace(1., 2.5, 4)
+    eboss_zbins = [1., 1.5, 2., 3.]
 
     qso, rand = sample.eboss_qso()
 
@@ -609,6 +642,22 @@ def duty_cycle():
 def haloenergy():
     z_centers = []
     import glob
+    fluxcuthi = 2.
+    fluxcutmid = 5.
+    fluxmax = 1000.
+
+    izrgfit = read_pickle('results/fits/auto/izrg.pickle')
+
+    e_izrg = lumfunc.energy_per_halo_zrange((0.5, 1.), izrgfit['Mmin'],
+                                            fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg')
+    izrgloerr = e_izrg - lumfunc.energy_per_halo_zrange((0.5, 1.), izrgfit['Mmin'] - izrgfit['sigMmin'],
+                                                     fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg')
+    izrghierr = lumfunc.energy_per_halo_zrange((0.5, 1.), izrgfit['Mmin'] + izrgfit['sigMmin'],
+                                          fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg') - e_izrg
+
+    izrgstuff = [izrgfit['eff_z'], e_izrg, izrgloerr, izrghierr]
+
+
     qsofitnames = glob.glob('results/fits/tomo/rg_qso*.pickle')
     fits = []
     qsozrange = [1., 1.5, 2., 2.5]
@@ -638,4 +687,4 @@ def haloenergy():
         ehi.append(lumfunc.energy_per_halo_zrange(zrange=(qsozrange[j], qsozrange[j + 1]), logminmass=fits[j]['Mxmin'] + fits[j]['sigMxmin'],
                                                  fluxcut=2., fluxmax=1000.)-e)
 
-    results.energetics(z_centers, es, elo, ehi, qsowindinfo)
+    results.energetics(izrgstuff, z_centers, es, elo, ehi, qsowindinfo)

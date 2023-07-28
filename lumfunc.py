@@ -99,7 +99,7 @@ def occupation_dndz(logminmass, dndz, fluxcut, fluxmax=None, lftype='agn'):
     return galdens / halodens
 
 def occupation_zrange(logminmass, zrange, fluxcut, fluxmax=None, lftype='agn'):
-    galdens = lf_fluxlim_zrange(zrange, fluxcut, fluxmax, lftype=lftype)
+    galdens = lf_fluxlim_zrange(zrange=zrange, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
     halodens = luminosityfunction.hmf_zrange(zrange, logminmass)
     return galdens / halodens
 
@@ -149,11 +149,11 @@ def int_heat(heatfile, lmin, lmax=29):
     totheat = np.trapz(interp_heat, lumgrid) * 1e7  # erg/s/Mpc^3
     return hubbleunits.add_h_to_density(totheat)
 
-def interp_heat_above_lum(z, lmin, lmax=29):
-    heat0 = pd.read_csv('results/kondapally_heating/z05_1_agn.csv', names=['lum', 'heat'])
-    heat1 = pd.read_csv('results/kondapally_heating/z1_15_agn.csv', names=['lum', 'heat'])
-    heat2 = pd.read_csv('results/kondapally_heating/z15_2_agn.csv', names=['lum', 'heat'])
-    heat3 = pd.read_csv('results/kondapally_heating/z2_25_agn.csv', names=['lum', 'heat'])
+def interp_heat_above_lum(z, lmin, lmax=29, lftype='agn'):
+    heat0 = pd.read_csv('results/kondapally_heating/z05_1_%s.csv' % lftype, names=['lum', 'heat'])
+    heat1 = pd.read_csv('results/kondapally_heating/z1_15_%s.csv' % lftype, names=['lum', 'heat'])
+    heat2 = pd.read_csv('results/kondapally_heating/z15_2_%s.csv' % lftype, names=['lum', 'heat'])
+    heat3 = pd.read_csv('results/kondapally_heating/z2_25_%s.csv' % lftype, names=['lum', 'heat'])
     heatfiles = [heat0, heat1, heat2, heat3]
     zs = [0.75, 1.25, 1.75, 2.25]
 
@@ -163,7 +163,7 @@ def interp_heat_above_lum(z, lmin, lmax=29):
     return 10 ** np.interp(z, zs, totheats)
 
 
-def heating_fluxlim_dndz(dndz, fluxcut, fluxmax=None):
+def heating_fluxlim_dndz(dndz, fluxcut, fluxmax=None, lftype='agn'):
     """
     Integrate the heating function over dndz for a fluxlimited sample
     :param dndz:
@@ -179,10 +179,10 @@ def heating_fluxlim_dndz(dndz, fluxcut, fluxmax=None):
         l150max = np.log10(fluxutils.luminosity_at_rest_nu(fluxmax, -0.7, .144, .15, zspace, flux_unit=u.mJy, energy=False))
     densities = []
     for j in range(len(zspace)):
-        densities.append(interp_heat_above_lum(zspace[j], l150s[j], l150max[j]))
+        densities.append(interp_heat_above_lum(zspace[j], l150s[j], l150max[j], lftype=lftype))
     return np.trapz(np.array(densities)*dndz[1], x=dndz[0])
 
-def heating_fluxlim_zrange(zrange, fluxcut, fluxmax=None):
+def heating_fluxlim_zrange(zrange, fluxcut, fluxmax=None, lftype='agn'):
     """
     assume a constant dndz over a given z range tuple
     :param zrange:
@@ -192,17 +192,17 @@ def heating_fluxlim_zrange(zrange, fluxcut, fluxmax=None):
     """
     dndz = redshift_helper.dndz_from_z_list(np.random.uniform(zrange[0], zrange[1], 10000), 10)
 
-    return heating_fluxlim_dndz(dndz=dndz, fluxcut=fluxcut, fluxmax=fluxmax)
+    return heating_fluxlim_dndz(dndz=dndz, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
 
-def heat_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None):
-    heatdens = heating_fluxlim_zrange(zrange=zrange, fluxcut=fluxcut, fluxmax=fluxmax)
+def heat_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None, lftype='agn'):
+    heatdens = heating_fluxlim_zrange(zrange=zrange, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
     halodens = luminosityfunction.hmf_zrange(zrange=zrange, logminmass=logminmass)
     return heatdens / halodens
 
-def energy_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None):
-    dutycycle = occupation_zrange(zrange=zrange, logminmass=logminmass, fluxcut=fluxcut, fluxmax=fluxmax)
+def energy_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None, lftype='agn'):
+    dutycycle = occupation_zrange(zrange=zrange, logminmass=logminmass, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
     elapsedtime = (apcosmo.age(zrange[0]) - apcosmo.age(zrange[1])).to('s').value
-    heatperhalo = heat_per_halo_zrange(zrange=zrange, logminmass=logminmass, fluxcut=fluxcut, fluxmax=fluxmax)
+    heatperhalo = heat_per_halo_zrange(zrange=zrange, logminmass=logminmass, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
     return np.log10(dutycycle * elapsedtime * heatperhalo)
 
 
