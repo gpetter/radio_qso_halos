@@ -55,7 +55,7 @@ def in_cmblensingmask(ras, decs):
 	return lensmask[hp.ang2pix(nside=hp.npix2nside(len(lensmask)), theta=ras, phi=decs, lonlat=True)] == 1
 
 
-def in_lotss_dr2(ras, decs, galcut=30):
+def in_lotss_dr2(ras, decs, galcut=20):
 	moc = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
 	inmoc = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
 
@@ -94,6 +94,7 @@ def in_boss(ras, decs):
 				(np.logical_not(badfield.contains(ras, decs))) & (np.logical_not(badphot.contains(ras, decs))) & \
 				(np.logical_not(star.contains(ras, decs)))
 	return good_idxs
+
 
 def cat_in_boss(cat):
 	return cat[in_boss(cat['RA'], cat['DEC'])]
@@ -529,6 +530,20 @@ def boss_qso(minz=None, maxz=None):
 		rand = rand[np.where(rand['Z'] < maxz)]
 	return dat, rand
 
+def boss_gals(minz=None, maxz=None):
+	"""
+	BOSS CMASS + LOWZ galaxies and randoms
+	"""
+	dat = Table.read('../data/lss/BOSStot/BOSStot.fits')
+	rand = Table.read('../data/lss/BOSStot/BOSStot_randoms.fits')
+	if minz is not None:
+		dat = dat[np.where(dat['Z'] > minz)]
+		rand = rand[np.where(rand['Z'] > minz)]
+	if maxz is not None:
+		dat = dat[np.where(dat['Z'] < maxz)]
+		rand = rand[np.where(rand['Z'] < maxz)]
+	return dat, rand
+
 def desiqso(minz=None, maxz=None):
 	dat = Table.read('catalogs/masked/desiQSO_edr.fits')
 	rand = Table.read('catalogs/masked/desiQSO_edr_randoms.fits')
@@ -600,6 +615,27 @@ def izrg_sample(fcut=5., sep_cw=5,  w2faint=17.5, maxflux=1000, majmax=30):
 
 	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) < ((17 - lotss['W2_cw']) / 4. + 0.15))]
 	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) < ((lotss['W2_cw'] - 17) / 3. + 0.75))]
+
+	lotss.remove_columns(['RA', 'DEC'])
+	lotss.rename_columns(['RA_cw', 'DEC_cw'], ['RA', 'DEC'])
+
+	lotss = lotss[lotss['Total_flux'] > fcut]
+	lotss['weight'] = np.ones(len(lotss))
+	return lotss
+
+def lzrg_sample(fcut=20., sep_cw=7.,  w2faint=17.5, maxflux=2000, majmax=45):
+	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
+	lotss = cat_in_lotss(lotss)
+	lotss = cat_in_goodwise(lotss)
+	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
+	lotss = lotss[np.where(lotss['Maj'] < majmax)]
+	# detected in WISE to avoid lobes
+	lotss = lotss[np.where((lotss['sep_cw'] < sep_cw))]
+	lotss = lotss[np.where((lotss['W2_cw'] < w2faint))]
+
+	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) < ((17 - lotss['W2_cw']) / 4. - 0.15))]
+	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) > ((lotss['W2_cw'] - 17) / 3. + 0.65))]
+	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) < ((lotss['W2_cw'] - 17) / 3. + 1.15))]
 
 	lotss.remove_columns(['RA', 'DEC'])
 	lotss.rename_columns(['RA_cw', 'DEC_cw'], ['RA', 'DEC'])
@@ -692,13 +728,16 @@ def treat_dndz_pdf(cat, sep=3, ndraws=100):
 	finalzs = np.array(speczs + singlezs + doublezs1 + doublezs2)
 	return finalzs
 
-def redshift_dist(cat, sep):
-	bootes = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
-	bootidx, catidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (cat['RA'], cat['DEC']),
+def redshift_dist(cat, sep, bootesonly=True):
+	if bootesonly:
+		deepcat = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
+	else:
+		deepcat = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/combined.fits')
+	bootidx, catidx = coordhelper.match_coords((deepcat['RA'], deepcat['DEC']), (cat['RA'], cat['DEC']),
 											   max_sep=sep, symmetric=False)
-	bootes = bootes[bootidx]
-	bootes = bootes[np.where(bootes['z_best'] < 4)]
-	zs = bootes['z_best']
+	deepcat = deepcat[bootidx]
+	deepcat = deepcat[np.where(deepcat['z_best'] < 4)]
+	zs = deepcat['z_best']
 	#speczs = bootes['Z'][np.where(bootes['Z'] > 0)]
 	return zs
 
@@ -708,9 +747,14 @@ def spline_dndz(dndz, n_newzs, spline_k=4, smooth=0.05):
 	return smooth_dndz
 
 
-def tomographer_dndz():
+def tomographer_dndz(which):
 	import pandas as pd
-	nz = pd.read_csv('results/tomographer/ddz.csv')
+	if which == 'hi':
+		nz = pd.read_csv('results/tomographer/ddz_hzrg.csv')
+	elif which == 'mid':
+		nz = pd.read_csv('results/tomographer/ddz_izrg.csv')
+	else:
+		nz = pd.read_csv('results/tomographer/ddz_lzrg.csv')
 	zs, dndz_b, dndz_berr = nz['z'], nz['dNdz_b'], nz['dNdz_b_err']
 
 	bconst_int = np.trapz(dndz_b, zs)
@@ -718,7 +762,10 @@ def tomographer_dndz():
 	bconst_dndz_err = dndz_berr / bconst_int
 
 	dndz_growth = dndz_b * cosmo.growthFactor(zs)
+
 	dndz_growth_err = dndz_berr * cosmo.growthFactor(zs)
+
+
 
 	growth_int = np.trapz(dndz_growth, zs)
 	dndz_growth /= growth_int
@@ -763,8 +810,13 @@ def estimate_rg_magbias(fluxcut, magdiff=0.1, nboots=100):
 
 
 
-def maketomographer_files(nside=128):
-	rgs = lotss_rg_sample()
+def maketomographer_files(nside=128, whichsample='hi'):
+	if whichsample == "hi":
+		rgs = hzrg_sample()
+	elif whichsample == "mid":
+		rgs = izrg_sample()
+	else:
+		rgs = lzrg_sample()
 	mask = np.zeros(hp.nside2npix(nside))
 	l, b = hp.pix2ang(nside, np.arange(len(mask)), lonlat=True)
 	ra, dec = coordhelper.galactic_to_equatorial(l, b)

@@ -199,9 +199,12 @@ def heat_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None, lftype='agn'
     halodens = luminosityfunction.hmf_zrange(zrange=zrange, logminmass=logminmass)
     return heatdens / halodens
 
-def energy_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None, lftype='agn'):
+def energy_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None, lftype='agn', avg_power=False):
     dutycycle = occupation_zrange(zrange=zrange, logminmass=logminmass, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
-    elapsedtime = (apcosmo.age(zrange[0]) - apcosmo.age(zrange[1])).to('s').value
+    if avg_power:
+        elapsedtime = 1.
+    else:
+        elapsedtime = (apcosmo.age(zrange[0]) - apcosmo.age(zrange[1])).to('s').value
     heatperhalo = heat_per_halo_zrange(zrange=zrange, logminmass=logminmass, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
     return np.log10(dutycycle * elapsedtime * heatperhalo)
 
@@ -250,6 +253,14 @@ def windheat_per_halo(zrange, logminmass, fduty, kinetic_frac=0.005):
     heatperhalo = heatdens / halodens
     return np.log10(heatperhalo)
 
+def windpower_per_halo(zrange, logminmass, kinetic_frac=0.005):
+    tcosmic = (apcosmo.age(zrange[0]) - apcosmo.age(zrange[1])).to('s').value
+    heatdens = windheating(zrange, kinetic_frac)
+    powerdens = heatdens / tcosmic
+    halodens = luminosityfunction.hmf_zrange(zrange, logminmass)
+    powerperhalo = powerdens / halodens
+    return np.log10(powerperhalo)
+
 """def type1_windheatperhalo(zrange, logminmass, kinetic_frac=0.005):
     # quasars live in 12.5 halos, or minimum mass 12.2
     halodens_type1 = luminosityfunction.hmf_zrange(zrange=zrange, logminmass=12.2)
@@ -290,12 +301,27 @@ def desiqso_massive_frac(z, logminmass):
 
 def type1_windheatperhalo(zrange, logminmass, kinetic_frac=0.005):
     agn_windenergy_per_volume = windheating(zrange, kinetic_frac=kinetic_frac)
-    qso_frac_all_agn = luminosityfunction.qso_luminosity_density(45, 1.25) / luminosityfunction.qso_luminosity_density(
-        40, 1.25)
-    qso_frac_in_massive_halos = desiqso_massive_frac(1.25, logminmass)
+    midz = zrange[0] + (zrange[1] - zrange[0]) / 2.
+    qso_frac_all_agn = luminosityfunction.qso_luminosity_density(45, midz) / luminosityfunction.qso_luminosity_density(
+        40, midz)
+
+    qso_frac_in_massive_halos = desiqso_massive_frac(midz, logminmass)
     halodens = luminosityfunction.hmf_zrange(zrange, logminmass)
 
     return np.log10(agn_windenergy_per_volume * qso_frac_all_agn * qso_frac_in_massive_halos / halodens)
+
+
+def type1_windpowerperhalo(zrange, logminmass, kinetic_frac=0.005):
+    agn_windenergy_per_volume = windheating(zrange, kinetic_frac=kinetic_frac)
+    tcosmic = (apcosmo.age(zrange[0]) - apcosmo.age(zrange[1])).to('s').value
+    powerdens = agn_windenergy_per_volume / tcosmic
+    midz = zrange[0] + (zrange[1] - zrange[0])/2.
+    qso_frac_all_agn = luminosityfunction.qso_luminosity_density(45, midz) / luminosityfunction.qso_luminosity_density(
+        40, midz)
+    qso_frac_in_massive_halos = desiqso_massive_frac(midz, logminmass)
+    halodens = luminosityfunction.hmf_zrange(zrange, logminmass)
+
+    return np.log10(powerdens * qso_frac_all_agn * qso_frac_in_massive_halos / halodens)
 
 
 #def desiqso_massive_frac_zrange(zrange):
