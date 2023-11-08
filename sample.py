@@ -668,34 +668,36 @@ def izrg_sample(fcut=5., sep_cw=5,  w2faint=17.5, maxflux=1000, majmax=30):
 	lotss['weight'] = np.ones(len(lotss))
 	return lotss
 
-def lzrg_sample(fcut=20., sep_cw=7.,  w2faint=17.5, maxflux=2000, majmax=45):
+def lzrg_sample(fcut=20., sep_cw=7.,  w2faint=17.5, maxflux=2000, majmax=45, minzphot=0.2, maxzphot=0.55, lcut=25.):
 	lotss = Table.read('catalogs/LoTSS.fits')
 	lotss = cat_in_goodclustering_area(lotss)
 	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
-	lotss = lotss[np.where(lotss['Maj'] < majmax)]
-	# detected in WISE to avoid lobes
-	lotss = lotss[np.where((lotss['sep_cw'] < sep_cw))]
-	lotss = lotss[np.where((lotss['W2_cw'] < w2faint))]
+	# if using Duncan photometric redshifts (Hardcastle+23 catalog) to select low-redshift luminous AGN,
+	# instead of using WISE colors like higher-redshift samples
+	if minzphot is not None:
+		lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
+		lotss = lotss[np.where((lotss['zphot'] > minzphot) & (lotss['zphot'] < maxzphot))]
+		lotss = lotss[np.where(lotss['L150'] > lcut)]
 
-	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) < ((17 - lotss['W2_cw']) / 4. - 0.15))]
-	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) > ((lotss['W2_cw'] - 17) / 3. + 0.65))]
-	lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) < ((lotss['W2_cw'] - 17) / 3. + 1.15))]
+	# otherwise use WISE color cuts to try to select 0.25 < z < 0.5 radio galaxies
+	else:
+		lotss = lotss[np.where(lotss['Maj'] < majmax)]
+		# detected in WISE to avoid lobes
+		lotss = lotss[np.where((lotss['sep_cw'] < sep_cw))]
+		lotss = lotss[np.where((lotss['W2_cw'] < w2faint))]
 
-	lotss.remove_columns(['RA', 'DEC'])
-	lotss.rename_columns(['RA_cw', 'DEC_cw'], ['RA', 'DEC'])
+		lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) < ((17 - lotss['W2_cw']) / 4. - 0.15))]
+		lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) > ((lotss['W2_cw'] - 17) / 3. + 0.65))]
+		lotss = lotss[np.where((lotss['W1_cw'] - lotss['W2_cw']) < ((lotss['W2_cw'] - 17) / 3. + 1.15))]
 
-	lotss = lotss[lotss['Total_flux'] > fcut]
+		lotss.remove_columns(['RA', 'DEC'])
+		lotss.rename_columns(['RA_cw', 'DEC_cw'], ['RA', 'DEC'])
+
+		lotss = lotss[lotss['Total_flux'] > fcut]
 	lotss['weight'] = np.ones(len(lotss))
 	return lotss
 
-def lzrg_zphot_sample(lcut=25, minz=0.25, maxz=0.5, maxflux=2000.):
-	lotss = Table.read('catalogs/LoTSS.fits')
-	lotss = cat_in_goodclustering_area(lotss)
-	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
-	lotss = lotss[np.where((lotss['zphot'] > minz) & (lotss['zphot'] < maxz))]
-	lotss = lotss[np.where(lotss['L150'] > lcut)]
 
-	return lotss
 
 
 

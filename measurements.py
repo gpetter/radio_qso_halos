@@ -11,12 +11,7 @@ import glob
 import os
 from plotscripts import results
 plotdir = '/home/graysonpetter/Dropbox/radioplots/'
-def eboss_qso_autocf(scales):
-    qso, rand = sample.qsocat(eboss=True, boss=False)
-    fitpars, autocf = pipeline.measure_and_fit_autocf(scales, qso, rand)
-    autocf.pop('plot')
-    with open('results/cfs/ebossqso_cf.pickle', 'wb') as f:
-        pickle.dump(autocf, f)
+
 
 def retrieve_eboss_autocf():
     with open('results/cfs/ebossqso_cf.pickle', 'rb') as f:
@@ -298,8 +293,9 @@ def lzrg_xcorr(rpscales):
     autofit.pop('plot')
     write_pickle('results/fits/tomo/lowz_fit', autofit)
 
+    boss = sample.cat_in_goodclustering_area(boss)
+    rand = sample.cat_in_goodclustering_area(rand)
 
-    boss, rand = sample.cat_in_lotss(boss), sample.cat_in_lotss(rand)
 
     # convert rp scales to angular scales at median redshift of bin
     theta_scales = cosmo.rp2angle(rps=rpscales, z=effz, h_unit=True)

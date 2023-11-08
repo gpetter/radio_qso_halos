@@ -425,7 +425,7 @@ def both_redshift_dist(nbins=30, ndraws=100):
     plt.savefig(plotdir + 'rg_dndz.pdf')
     plt.close('all')
 
-def lum_redshift(izrgs=False, lzrgs=False, hzrgflux=2., izrgflux=5., lzrgflux=20.):
+def lum_redshift(izrgs=True, lzrgs=True, hzrgflux=2., izrgflux=5., lzrgflux=20.):
     import seaborn as sns
     s=40
 
@@ -523,9 +523,11 @@ def lum_redshift(izrgs=False, lzrgs=False, hzrgflux=2., izrgflux=5., lzrgflux=20
     if lzrgs:
         lotz = sample.lzrg_sample(lzrgflux)
 
+
         bootes = sample.match2bootes(lotz, 3.)
         bootes = hstack((lotz, bootes))
         bootes = bootes[np.where(bootes['z_best'] < 4)]
+
 
         herg = bootes[np.where(bootes['Overall_class'] == "HERG")]
         lerg = bootes[np.where(bootes['Overall_class'] == "LERG")]
@@ -560,7 +562,8 @@ def lum_redshift(izrgs=False, lzrgs=False, hzrgflux=2., izrgflux=5., lzrgflux=20
         lowlum = np.log10(
             fluxutils.luminosity_at_rest_nu(20. * np.ones_like(lowzspace), -0.7, .144, .15, lowzspace, flux_unit=u.mJy,
                                             energy=False))
-        ax.plot(lowzspace, lowlum, c=lowc, ls='dashed')
+        #ax.plot(lowzspace, lowlum, c=lowc, ls='dashed')
+        ax.plot(lowzspace, 25.*np.ones_like(lowzspace), c=lowc, ls='dashed')
 
         ax.scatter(lerg['z_best'], lerglums, s=s, c='none', label='IzLERGs',
                    edgecolors=lowc)
@@ -697,6 +700,6 @@ def test_selections():
 #both_redshift_dist()
 #izrg_redshift_dist(7)
 #hostgals(True)
-lum_redshift(True, True)
+#lum_redshift(True, True)
 #heating_contribution(fcuthi=3.)
 #test_selections()

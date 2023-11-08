@@ -65,17 +65,17 @@ def halomass(elg=False ,lzrg=True):
     #plt.fill_between(z_centers, qsomasses - qsoerrs, qsomasses + qsoerrs, alpha=0.5, color='royalblue')
     plt.text(1.4, 12.3, 'eBOSS QSOs', color=qso_c, fontsize=15, alpha=0.8)
     from halomodelpy import halo_growthrate
-    zgrid, ms = halo_growthrate.evolve_halo_mass(12.5, 3, 0.01)
+    zgrid, ms = halo_growthrate.evolve_halo_mass(12.7, 3, 0.01)
     plt.plot(zgrid, ms, c='k', ls='--', alpha=0.3)
     plt.text(0.1, ms[0] - 0.2, 'Mean', rotation=-18, alpha=0.2)
-    zgrid, ms = halo_growthrate.evolve_halo_mass(13., 3, 0.01)
-    plt.plot(zgrid, ms, c='k', ls='--', alpha=0.3)
+    #zgrid, ms = halo_growthrate.evolve_halo_mass(13., 3, 0.01)
+    #plt.plot(zgrid, ms, c='k', ls='--', alpha=0.3)
 
-    zgrid, ms = halo_growthrate.evolve_halo_mass(12.5, 3, 0.01, wantmean=False)
+    zgrid, ms = halo_growthrate.evolve_halo_mass(12.7, 3, 0.01, wantmean=False)
     plt.plot(zgrid, ms, c='k', ls='--', alpha=0.1)
     plt.text(0.1, ms[0] - 0.25, 'Median growth rate', rotation=-15, alpha=0.2)
-    zgrid, ms = halo_growthrate.evolve_halo_mass(13., 3, 0.01, wantmean=False)
-    plt.plot(zgrid, ms, c='k', ls='--', alpha=0.1)
+    #zgrid, ms = halo_growthrate.evolve_halo_mass(13., 3, 0.01, wantmean=False)
+    #plt.plot(zgrid, ms, c='k', ls='--', alpha=0.1)
 
 
 
@@ -671,3 +671,5 @@ def avghalopower(lzrgs, izrgs, hzrgs, qsowindinfo):
 
     plt.savefig(plotdir + 'halopower.pdf', dpi=300)
     plt.close('all')
+
+halomass()

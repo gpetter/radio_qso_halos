@@ -16,7 +16,12 @@ import os
 from plotscripts import results
 plotdir = '/home/graysonpetter/Dropbox/radioplots/'
 
-
+def eboss_qso_autocf(scales):
+    qso, rand = sample.qsocat(eboss=True, boss=False)
+    fitpars, autocf = pipeline.measure_and_fit_autocf(scales, qso, rand)
+    autocf.pop('plot')
+    with open('results/cfs/ebossqso_cf.pickle', 'wb') as f:
+        pickle.dump(autocf, f)
 
 
 
