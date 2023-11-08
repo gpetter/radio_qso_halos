@@ -55,7 +55,7 @@ def in_cmblensingmask(ras, decs):
 	return lensmask[hp.ang2pix(nside=hp.npix2nside(len(lensmask)), theta=ras, phi=decs, lonlat=True)] == 1
 
 
-def in_lotss_dr2(ras, decs, galcut=20):
+def in_lotss_dr2(ras, decs, galcut=20, northonly=True):
 	moc = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
 	inmoc = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
 
@@ -65,17 +65,40 @@ def in_lotss_dr2(ras, decs, galcut=20):
 
 	l, b = coordhelper.equatorial_to_galactic(ras, decs)
 	goodbs = np.abs(b) > galcut
+	good_idxs = inmoc & goodrms & goodbs
+	if northonly:
+		innorth = (ras > 90) & (ras < 290)
+		good_idxs = good_idxs & innorth
 
 
-	return inmoc & goodrms & goodbs
+	return good_idxs
 
 def cat_in_lotss(cat):
 	return cat[in_lotss_dr2(cat['RA'], cat['DEC'])]
 
-def in_eboss(ras, decs):
+
+def in_ls_dr8(ra, dec):
+	import astropy.units as u
+	northfoot = MOC.load('../data/footprints/legacySurvey/dr8_photoz_duncan/desi_lis_dr8_pzn.rcf.moc.fits')
+	southfoot = MOC.load('../data/footprints/legacySurvey/dr8_photoz_duncan/desi_lis_dr8_pzs.rcf.moc.fits')
+	inbad = (ra < 243.4) & (ra > 242) & (dec < 35.3) & (dec > 34.2)
+	infoot = (northfoot.contains(ra * u.deg, dec * u.deg) | southfoot.contains(ra * u.deg,
+																			   dec * u.deg)) & np.logical_not(inbad)
+
+	return infoot
+
+def cat_in_ls_dr8(t):
+	infoot = in_ls_dr8(t['RA'], t['DEC'])
+	return t[infoot]
+
+
+def in_eboss(ras, decs, northonly=True):
 
 	ebossmoc = pymangle.Mangle('../data/footprints/eBOSS/eBOSS_QSOandLRG_fullfootprintgeometry_noveto.ply')
 	good_idxs = ebossmoc.contains(ras, decs)
+	if northonly:
+		innorth = (ras > 90) & (ras < 290)
+		good_idxs = good_idxs & innorth
 	return good_idxs
 
 def cat_in_eboss(cat):
@@ -132,6 +155,15 @@ def in_goodwise(ras, decs):
 def cat_in_goodwise(cat):
 	return cat[in_goodwise(cat['RA'], cat['DEC'])]
 
+def in_goodclustering_area(ra, dec):
+	return in_lotss_dr2(ra, dec) & in_goodwise(ra, dec) & in_ls_dr8(ra, dec)
+
+def cat_in_goodclustering_area(cat):
+	cat = cat_in_lotss(cat)
+	cat = cat_in_goodwise(cat)
+	cat = cat_in_ls_dr8(cat)
+	return cat
+
 
 def lotss_randoms():
 	from SkyTools import random_catalogs
@@ -139,11 +171,17 @@ def lotss_randoms():
 	rand = Table()
 	rand['RA'] = randra
 	rand['DEC'] = randdec
-	rand = cat_in_lotss(rand)
 	rand['weight'] = np.ones(len(rand))
-	rand = cat_in_goodwise(rand)
-	rand = cat_in_lotss(rand)
+	rand = cat_in_goodclustering_area(rand)
 	return rand
+
+def rg_mask(nside):
+	mask = np.zeros(hp.nside2npix(nside))
+	l, b = hp.pix2ang(nside, np.arange(len(mask)), lonlat=True)
+	ra, dec = coordhelper.galactic_to_equatorial(l, b)
+	idx = in_goodclustering_area(ra, dec)
+	mask[idx] = 1.
+	return mask
 
 
 def mask_sample(coords, radio_names):
@@ -509,8 +547,10 @@ def qsocat(eboss=True, boss=False):
 	return dat, rand
 
 def eboss_qso(minz=None, maxz=None):
-	dat = Table.read('catalogs/masked/eBOSS_QSO.fits')
-	rand = Table.read('catalogs/masked/eBOSS_QSO_randoms.fits')
+	#dat = Table.read('catalogs/masked/eBOSS_QSO.fits')
+	#rand = Table.read('catalogs/masked/eBOSS_QSO_randoms.fits')
+	dat = Table.read('../data/lss/eBOSS_QSO/eBOSS_QSO.fits')
+	rand = Table.read('../data/lss/eBOSS_QSO/eBOSS_QSO_randoms.fits')
 	if minz is not None:
 		dat = dat[np.where(dat['Z'] > minz)]
 		rand = rand[np.where(rand['Z'] > minz)]
@@ -577,11 +617,17 @@ def desi_lrg(minz=None, maxz=None):
 		rand = rand[np.where(rand['Z'] < maxz)]
 	return dat, rand
 
-def hzrg_sample(fcut=2., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=17.5, maxflux=1000, majmax=30):
+
+
+
+
+def hzrg_sample(fcut=2., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=17.5, maxflux=1000, majmax=30, zphotcut=0.5):
 	from SkyTools import fluxutils
-	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
-	lotss = cat_in_lotss(lotss)
-	lotss = cat_in_goodwise(lotss)
+	lotss = Table.read('catalogs/LoTSS.fits')
+	lotss = cat_in_goodclustering_area(lotss)
+	# cut local zphot detections
+	lotss = lotss[np.where((lotss['zphot'] > zphotcut) | (np.logical_not(np.isfinite(lotss['zphot']))))]
+
 	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
 	lotss = lotss[np.where(lotss['Maj'] < majmax)]
 	#lotss = lotss[np.where((lotss['Jmag'].mask == True) | (np.array(lotss['Jmag'], dtype=float) > jcut) | (lotss['sep_2mass'] > sep_2mass))]
@@ -604,9 +650,8 @@ def hzrg_sample(fcut=2., sep_cw=5, yint=0.15, sep_2mass=5, jcut=16, w2faint=17.5
 	return lotss
 
 def izrg_sample(fcut=5., sep_cw=5,  w2faint=17.5, maxflux=1000, majmax=30):
-	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
-	lotss = cat_in_lotss(lotss)
-	lotss = cat_in_goodwise(lotss)
+	lotss = Table.read('catalogs/LoTSS.fits')
+	lotss = cat_in_goodclustering_area(lotss)
 	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
 	lotss = lotss[np.where(lotss['Maj'] < majmax)]
 	# detected in WISE to avoid lobes
@@ -624,9 +669,8 @@ def izrg_sample(fcut=5., sep_cw=5,  w2faint=17.5, maxflux=1000, majmax=30):
 	return lotss
 
 def lzrg_sample(fcut=20., sep_cw=7.,  w2faint=17.5, maxflux=2000, majmax=45):
-	lotss = Table.read('../data/radio_cats/LOTSS_DR2/LOTSS_DR2_2mass_cw.fits')
-	lotss = cat_in_lotss(lotss)
-	lotss = cat_in_goodwise(lotss)
+	lotss = Table.read('catalogs/LoTSS.fits')
+	lotss = cat_in_goodclustering_area(lotss)
 	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
 	lotss = lotss[np.where(lotss['Maj'] < majmax)]
 	# detected in WISE to avoid lobes
@@ -639,6 +683,32 @@ def lzrg_sample(fcut=20., sep_cw=7.,  w2faint=17.5, maxflux=2000, majmax=45):
 
 	lotss.remove_columns(['RA', 'DEC'])
 	lotss.rename_columns(['RA_cw', 'DEC_cw'], ['RA', 'DEC'])
+
+	lotss = lotss[lotss['Total_flux'] > fcut]
+	lotss['weight'] = np.ones(len(lotss))
+	return lotss
+
+def lzrg_zphot_sample(lcut=25, minz=0.25, maxz=0.5, maxflux=2000.):
+	lotss = Table.read('catalogs/LoTSS.fits')
+	lotss = cat_in_goodclustering_area(lotss)
+	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
+	lotss = lotss[np.where((lotss['zphot'] > minz) & (lotss['zphot'] < maxz))]
+	lotss = lotss[np.where(lotss['L150'] > lcut)]
+
+	return lotss
+
+
+
+def noz_rg_sample(fcut=2., sep_cw=7, w2cut=17.5, maxflux=1000, majmax=15):
+	from SkyTools import fluxutils
+	lotss = Table.read('catalogs/LoTSS.fits')
+	lotss = cat_in_goodclustering_area(lotss)
+	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
+	lotss = lotss[np.where(lotss['Maj'] < majmax)]
+	#lotss = lotss[np.where((lotss['Jmag'].mask == True) | (np.array(lotss['Jmag'], dtype=float) > jcut) | (lotss['sep_2mass'] > sep_2mass))]
+
+	lotss = lotss[np.where((lotss['sep_cw'] > sep_cw) | (np.logical_not(np.isfinite(lotss['sep_cw']))))]
+	lotss = lotss[np.where((lotss['W2_cw'] > w2cut) | (np.logical_not(np.isfinite(lotss['W2_cw']))))]
 
 	lotss = lotss[lotss['Total_flux'] > fcut]
 	lotss['weight'] = np.ones(len(lotss))

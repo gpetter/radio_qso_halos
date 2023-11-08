@@ -1,4 +1,4 @@
-from SkyTools import healpixhelper, coordhelper
+from SkyTools import healpixhelper, coordhelper, fluxutils
 import numpy as np
 import healpy as hp
 import astropy.units as u
@@ -7,7 +7,36 @@ from astropy.io import fits
 from astropy.wcs import WCS
 from astropy.table import Table
 import os
+def cut_duplicates():
+    """
+    Prep LoTSS DR2 catalog
+    remove sources which are both matched to the same WISE source
+    :return:
+    """
+    lotss = Table.read('../data/radio_cats/LOTSS_DR2/LoTSS_DR2_src_bright_cw.fits')
+    lotss = lotss[np.where(lotss['Total_flux'] > 1.5)]
 
+    uniq, counts = np.unique(lotss['objID_cw'], return_counts=True)
+    dup = uniq[counts > 1]
+    #dup_idx = np.where(np.in1d(lotss['objID'], dup))
+    seps = lotss['sep_cw']
+
+    for duplic in dup:
+        idx = np.where(lotss['objID_cw'] == duplic)[0]
+        #numdups = len(idx[0])
+        newseps = seps[idx]
+        if len(newseps) > 0:
+            bestidx = np.argmin(newseps)
+            badidx = np.where(newseps > newseps[bestidx])[0]
+            seps[idx[badidx]] = np.nan
+    lotss['RA'] = np.array(lotss['RA'])
+    lotss['DEC'] = np.array(lotss['DEC'])
+    lotss['RA_cw'] = np.array(lotss['RA_cw'])
+    lotss['DEC_cw'] = np.array(lotss['DEC_cw'])
+    # cut negative redshifts
+    lotss['zphot'][np.where(lotss['zphot'] < 0.0001)] = np.nan
+    lotss['L150'] = np.log10(fluxutils.luminosity_at_rest_nu(lotss['Total_flux'], alpha=-0.7, nu_obs=.144, nu_rest_want=.15, z=lotss['zphot'], flux_unit=u.mJy, energy=False))
+    lotss['RA', 'DEC', 'Total_flux', 'Peak_flux', 'Maj', 'RA_cw', 'DEC_cw', 'W1_cw', 'W2_cw', 'sep_cw', 'zphot', 'L150', 'z_desi'].write('catalogs/LoTSS.fits', overwrite=True)
 
 def highres_lotss_dr2_noise_map(outputmap_nside=4096):
     scratch_space = '.'

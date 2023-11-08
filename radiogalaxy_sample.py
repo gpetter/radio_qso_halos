@@ -6,7 +6,7 @@ import sample
 from SkyTools import coordhelper, fluxutils
 import pandas as pd
 hic = 'firebrick'
-midc = '#ff7400'
+#midc = '#ff7400'
 midc = '#ff4d00'
 lowc = '#ffc100'
 
@@ -96,9 +96,22 @@ def wisediagram_both():
             inbox = np.where(((comb_b['W1_cw'] - comb_b['W2_cw']) > ((17 - comb_b['W2_cw']) / 4. + 0.15)) & (
                         comb_b['W2_cw'] < 17.5))[0]
         elif j == 1:
-            inbox = np.where(((comb_b['W1_cw'] - comb_b['W2_cw']) < ((17 - comb_b['W2_cw']) / 4. + 0.15)) & (
-                        comb_b['W2_cw'] < 17.5) & (
-                                         (comb_b['W1_cw'] - comb_b['W2_cw']) < ((comb_b['W2_cw'] - 17) / 3. + 0.75)))[0]
+            #inbox = np.where(((comb_b['W1_cw'] - comb_b['W2_cw']) < ((17 - comb_b['W2_cw']) / 4. + 0.15)) & (
+            #            comb_b['W2_cw'] < 17.5) & (
+            #                             (comb_b['W1_cw'] - comb_b['W2_cw']) < ((comb_b['W2_cw'] - 17) / 3. + 0.75)))[0]
+            inbox = np.where(
+                (
+                                     ((comb_b['W1_cw'] - comb_b['W2_cw']) < ((17 - comb_b['W2_cw']) / 4. + 0.15)) & (
+                            comb_b['W2_cw'] < 17.5) & (
+                                             (comb_b['W1_cw'] - comb_b['W2_cw']) < ((comb_b['W2_cw'] - 17) / 3. + 0.75))
+                )
+                |
+                (
+                    ((comb_b['W1_cw'] - comb_b['W2_cw']) < ((17 - comb_b['W2_cw']) / 4. - 0.15))
+                    &
+                    ((comb_b['W1_cw'] - comb_b['W2_cw']) < ((comb_b['W2_cw'] - 17) / 3. + 1.15))
+                )
+                )[0]
         else:
             inbox = np.where(((comb_b['W1_cw'] - comb_b['W2_cw']) < ((17 - comb_b['W2_cw']) / 4. - 0.15)) & (
                         comb_b['W2_cw'] < 17.5) & (comb_b['W1_cw'] - comb_b['W2_cw']) > (
@@ -343,7 +356,7 @@ def both_redshift_dist(nbins=30, ndraws=100):
     ax1.hist(hifinalzs, range=zrange, bins=nbins, weights=weight*np.ones_like(hifinalzs), histtype='step', edgecolor=hic)
     ax1.hist(hispecbootes['z_best'], range=zrange, bins=nbins, histtype='step', hatch='////',
              weights=ndraws*weight*np.ones(len(hispecbootes)), edgecolor=hic, alpha=0.3)
-    ax1.text(1.1, 0.03, 'Spectroscopic', color=hic, fontsize=25)
+    ax1.text(1.2, 0.03, 'Spectroscopic', color=hic, fontsize=25)
 
     plt.xlabel('Redshift')
     plt.ylabel('Redshift distribution')
@@ -387,7 +400,7 @@ def both_redshift_dist(nbins=30, ndraws=100):
 
     ax1.hist(midfinalzs, range=zrange, bins=nbins, histtype='step',
              weights=weight * np.ones_like(midfinalzs),
-             ls='dashed', hatch='/////', alpha=0.3, edgecolor=midc)
+             ls='dashed', alpha=0.9, edgecolor=midc)
     # ax1.text(0.1, 0.6, 'IzRGs', color='orange', fontsize=20)
 
     hist, foo = np.histogram(lowzs, bins=nbins, range=zrange)
@@ -399,12 +412,12 @@ def both_redshift_dist(nbins=30, ndraws=100):
 
     ax1.text(0.05, 0.6, 'LzRGs', color=lowc, fontsize=20, rotation=90)
     ax1.text(0.4, 1.05, 'IzRGs', color=midc, fontsize=20)
-    ax1.text(2.3, 0.4, 'HzRGs', color=hic, fontsize=20)
+    ax1.text(1.6, 0.9, 'HzRGs', color=hic, fontsize=20)
     ax1.set_ylim(0, 1.15)
 
     ax1.hist(lowzs, range=zrange, bins=nbins, histtype='step',
              weights=weight * np.ones_like(lowzs),
-             ls='dotted', hatch='/', alpha=0.8, edgecolor=lowc)
+             ls='dotted', alpha=0.9, edgecolor=lowc)
 
 
 
@@ -413,9 +426,10 @@ def both_redshift_dist(nbins=30, ndraws=100):
     plt.close('all')
 
 def lum_redshift(izrgs=False, lzrgs=False, hzrgflux=2., izrgflux=5., lzrgflux=20.):
+    import seaborn as sns
+    s=40
 
     lotz = sample.hzrg_sample(hzrgflux)
-    s=40
 
     bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
     bootes = bootes[np.where(bootes['z_best'] < 4)]
@@ -431,7 +445,9 @@ def lum_redshift(izrgs=False, lzrgs=False, hzrgflux=2., izrgflux=5., lzrgflux=20
     agn = bootes[np.where(bootes['Overall_class'] == "RQAGN")]
 
     zspace = np.linspace(1., 4, 100)
-    herglums = np.log10(fluxutils.luminosity_at_rest_nu(np.array(herg['Total_flux']), -0.7, .144, .15, herg['z_best'], flux_unit=u.mJy, energy=False))
+    herglums = np.log10(
+        fluxutils.luminosity_at_rest_nu(np.array(herg['Total_flux']), -0.7, .144, .15, herg['z_best'], flux_unit=u.mJy,
+                                        energy=False))
     lerglums = np.log10(
         fluxutils.luminosity_at_rest_nu(np.array(lerg['Total_flux']), -0.7, .144, .15, lerg['z_best'], flux_unit=u.mJy,
                                         energy=False))
@@ -441,54 +457,42 @@ def lum_redshift(izrgs=False, lzrgs=False, hzrgflux=2., izrgflux=5., lzrgflux=20
     agnlums = np.log10(
         fluxutils.luminosity_at_rest_nu(np.array(agn['Total_flux']), -0.7, .144, .15, agn['z_best'], flux_unit=u.mJy,
                                         energy=False))
-    limlum = np.log10(fluxutils.luminosity_at_rest_nu(hzrgflux*np.ones_like(zspace), -0.7, .144, .15, zspace, flux_unit=u.mJy, energy=False))
+    limlum = np.log10(
+        fluxutils.luminosity_at_rest_nu(hzrgflux * np.ones_like(zspace), -0.7, .144, .15, zspace, flux_unit=u.mJy,
+                                        energy=False))
 
-
-
-
-    fig, ax = plt.subplots(figsize=(8,7))
-    plt.plot(zspace, limlum, c='k', ls='--')
-    """plt.scatter(herg['z_best'], herglums, s=s, c='none', label='HERG',
-                edgecolors='goldenrod', marker='D')
-    plt.scatter(lerg['z_best'], lerglums, s=s, c='none', label='LERG',
-                edgecolors='tomato')
-    plt.scatter(sfg['z_best'], sfglums, s=s, c='none', label='SFG', marker='*',
-                edgecolors='cornflowerblue')
-    plt.scatter(agn['z_best'], agnlums, s=s, c='none', label='RQAGN', marker='s',
-                edgecolors='darkgreen')"""
-    plt.scatter(herg['z_best'], herglums, s=s, c='none', label='HERG',
-                edgecolors=hic, marker='D')
-    plt.scatter(lerg['z_best'], lerglums, s=s, c='none', label='LERG',
-                edgecolors=hic)
-    plt.scatter(sfg['z_best'], sfglums, s=s, c='none', label='SFG', marker='*',
-                edgecolors=hic)
-    plt.scatter(agn['z_best'], agnlums, s=s, c='none', label='RQAGN', marker='s',
-                edgecolors=hic)
-
-
+    fig, (ax2, ax) = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [1, 5]}, figsize=(8, 9))
+    plt.xlim(0, 2.5)
+    plt.xlabel('Redshift')
+    ax.plot(zspace, limlum, c=hic, ls='--')
+    ax.scatter(herg['z_best'], herglums, s=s, c='none', label='HERG',
+               edgecolors=hic, marker='o')
+    ax.scatter(lerg['z_best'], lerglums, s=s, c='none', label='LERG',
+               edgecolors=hic)
+    ax.scatter(sfg['z_best'], sfglums, s=s, c='none', label='SFG', marker='*',
+               edgecolors=hic)
+    ax.scatter(agn['z_best'], agnlums, s=s, c='none', label='RQAGN',
+               edgecolors=hic, marker='s')
 
     if izrgs:
         lotz = sample.izrg_sample(izrgflux)
-
 
         bootes = sample.match2bootes(lotz, 3.)
         bootes = hstack((lotz, bootes))
         bootes = bootes[np.where(bootes['z_best'] < 4)]
 
-
         herg = bootes[np.where(bootes['Overall_class'] == "HERG")]
         lerg = bootes[np.where(bootes['Overall_class'] == "LERG")]
         sfg = bootes[np.where(bootes['Overall_class'] == "SFG")]
         agn = bootes[np.where(bootes['Overall_class'] == "RQAGN")]
-
 
         zspace = np.linspace(0.1, 4, 100)
         if len(herg) > 0:
             herglums = np.log10(
                 fluxutils.luminosity_at_rest_nu(np.array(herg['Total_flux']), -0.7, .144, .15, herg['z_best'],
                                                 flux_unit=u.mJy, energy=False))
-            plt.scatter(herg['z_best'], herglums, s=s, c='none',
-                        edgecolors=midc, marker='D')
+            ax.scatter(herg['z_best'], herglums, s=s, c='none',
+                       edgecolors=midc)
         lerglums = np.log10(
             fluxutils.luminosity_at_rest_nu(np.array(lerg['Total_flux']), -0.7, .144, .15, lerg['z_best'],
                                             flux_unit=u.mJy,
@@ -498,33 +502,30 @@ def lum_redshift(izrgs=False, lzrgs=False, hzrgflux=2., izrgflux=5., lzrgflux=20
                 fluxutils.luminosity_at_rest_nu(np.array(sfg['Total_flux']), -0.7, .144, .15, sfg['z_best'],
                                                 flux_unit=u.mJy,
                                                 energy=False))
-            plt.scatter(sfg['z_best'], sfglums, s=s, c='none', marker='*',
-                        edgecolors=midc)
+            ax.scatter(sfg['z_best'], sfglums, s=s, c='none', marker='*',
+                       edgecolors=midc)
         if len(agn) > 0:
             agnlums = np.log10(
                 fluxutils.luminosity_at_rest_nu(np.array(agn['Total_flux']), -0.7, .144, .15, agn['z_best'],
                                                 flux_unit=u.mJy,
                                                 energy=False))
-            plt.scatter(agn['z_best'], agnlums, s=s, c='none', marker='s',
-                        edgecolors=midc)
+            ax.scatter(agn['z_best'], agnlums, s=s, c='none',
+                       edgecolors=midc)
         zspace = np.linspace(0.5, 1, 20)
         limlum = np.log10(
             fluxutils.luminosity_at_rest_nu(izrgflux * np.ones_like(zspace), -0.7, .144, .15, zspace, flux_unit=u.mJy,
                                             energy=False))
-        plt.plot(zspace, limlum, c=midc, ls='--')
+        ax.plot(zspace, limlum, c=midc, ls='--')
 
-
-        plt.scatter(lerg['z_best'], lerglums, s=s, c='none', label='IzLERGs',
-                    edgecolors=midc)
+        ax.scatter(lerg['z_best'], lerglums, s=s, c='none', label='IzLERGs',
+                   edgecolors=midc)
 
     if lzrgs:
         lotz = sample.lzrg_sample(lzrgflux)
 
-
         bootes = sample.match2bootes(lotz, 3.)
         bootes = hstack((lotz, bootes))
         bootes = bootes[np.where(bootes['z_best'] < 4)]
-
 
         herg = bootes[np.where(bootes['Overall_class'] == "HERG")]
         lerg = bootes[np.where(bootes['Overall_class'] == "LERG")]
@@ -535,8 +536,8 @@ def lum_redshift(izrgs=False, lzrgs=False, hzrgflux=2., izrgflux=5., lzrgflux=20
             herglums = np.log10(
                 fluxutils.luminosity_at_rest_nu(np.array(herg['Total_flux']), -0.7, .144, .15, herg['z_best'],
                                                 flux_unit=u.mJy, energy=False))
-            plt.scatter(herg['z_best'], herglums, s=s, c='none',
-                        edgecolors=lowc, marker='D')
+            ax.scatter(herg['z_best'], herglums, s=s, c='none',
+                       edgecolors=lowc)
         lerglums = np.log10(
             fluxutils.luminosity_at_rest_nu(np.array(lerg['Total_flux']), -0.7, .144, .15, lerg['z_best'],
                                             flux_unit=u.mJy,
@@ -546,35 +547,78 @@ def lum_redshift(izrgs=False, lzrgs=False, hzrgflux=2., izrgflux=5., lzrgflux=20
                 fluxutils.luminosity_at_rest_nu(np.array(sfg['Total_flux']), -0.7, .144, .15, sfg['z_best'],
                                                 flux_unit=u.mJy,
                                                 energy=False))
-            plt.scatter(sfg['z_best'], sfglums, s=s, c='none', marker='*',
-                        edgecolors=lowc)
+            ax.scatter(sfg['z_best'], sfglums, s=s, c='none', marker='*',
+                       edgecolors=lowc)
         if len(agn) > 0:
             agnlums = np.log10(
                 fluxutils.luminosity_at_rest_nu(np.array(agn['Total_flux']), -0.7, .144, .15, agn['z_best'],
                                                 flux_unit=u.mJy,
                                                 energy=False))
-            plt.scatter(agn['z_best'], agnlums, s=s, c='none', marker='s',
-                        edgecolors=lowc)
+            ax.scatter(agn['z_best'], agnlums, s=s, c='none',
+                       edgecolors=lowc)
         lowzspace = np.linspace(0.25, 0.5, 30)
         lowlum = np.log10(
             fluxutils.luminosity_at_rest_nu(20. * np.ones_like(lowzspace), -0.7, .144, .15, lowzspace, flux_unit=u.mJy,
                                             energy=False))
-        plt.plot(lowzspace, lowlum, c=lowc, ls='dashed')
+        ax.plot(lowzspace, lowlum, c=lowc, ls='dashed')
 
+        ax.scatter(lerg['z_best'], lerglums, s=s, c='none', label='IzLERGs',
+                   edgecolors=lowc)
 
-        plt.scatter(lerg['z_best'], lerglums, s=s, c='none', label='IzLERGs',
-                    edgecolors=lowc)
+    ax.set_ylim(23.6, 27.9)
 
+    lstars = pd.read_csv('results/kondapally23_agnlf/Lstars.csv')
+    ax.fill_between(lstars['z'], lstars['Lstar'] - lstars['loerr'], lstars['Lstar'] + lstars['hierr'], color='purple',
+                    alpha=0.1, edgecolor='none')
+    ax.text(0.9, 26.45, '$L_{\star}$', fontsize=20, color='purple', alpha=0.4)
 
+    ax.text(0.7, 24, 'HERGs + LERGs', fontsize=15, rotation=32, color='k', alpha=0.4)
 
+    bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
+    rgs = bootes[np.where((bootes['Overall_class'] == "HERG") | (bootes['Overall_class'] == "LERG"))]
+    rgs = rgs[np.where((np.isfinite(rgs['z_best']) & (np.isfinite(rgs['L150']))))]
+    sns.kdeplot(x=np.array(rgs['z_best'], dtype=float), y=np.log10(rgs['L150']), levels=4, ax=ax, bw_adjust=0.7,
+                color='k', alpha=0.1)
 
-    #plt.scatter(bootes['z_best'], lums, edgecolors='k', c='none')
+    ax.set_ylabel('log($L_{150 \ \mathrm{MHz}}$ [W/Hz])')
 
-    #plt.legend()
-    plt.xlabel('Redshift')
-    plt.ylabel(r'log $L_{150 \ \mathrm{MHz}}$ [W/Hz]')
-    plt.ylim(24.25, 27.4)
-    plt.xlim(0, 3.)
+    hzrgs = sample.hzrg_sample(2.)
+    izrgs = sample.izrg_sample(5.)
+    lzrgs = sample.lzrg_sample(20.)
+    hzrgs = sample.match2bootes(hzrgs, 3.)
+    izrgs = sample.match2bootes(izrgs, 3.)
+    lzrgs = sample.match2bootes(lzrgs, 3.)
+    hzrgs = hzrgs[np.where(hzrgs['z_best'] > 0.8)]
+    allrgs = vstack((hzrgs, izrgs, lzrgs))
+
+    zbins = np.linspace(0.1, 3., 11)
+    hergfracs = []
+    lergfracs = []
+    hergerrs = []
+    lergerrs = []
+    for j in range(len(zbins) - 1):
+        inzbin = allrgs[np.where((allrgs['z_best'] > zbins[j]) & (allrgs['z_best'] <= zbins[j + 1]))]
+        n_inbin = len(inzbin)
+        lergfrac = len(np.where(inzbin['Overall_class'] == 'LERG')[0]) / n_inbin
+        hergfrac = len(np.where(inzbin['Overall_class'] == 'HERG')[0]) / n_inbin
+        hergfracs.append(hergfrac)
+        lergfracs.append(lergfrac)
+        hergerrs.append(np.sqrt(hergfrac * (1 - hergfrac) / len(inzbin)))
+        lergerrs.append(np.sqrt(lergfrac * (1 - lergfrac) / len(inzbin)))
+
+    zcenters = zbins[:-1] + (zbins[1] - zbins[0]) / 2.
+    # plt.scatter(zcenters, hergfracs)
+    # plt.scatter(zcenters, lergfracs)
+    hergfracs, hergerrs = np.array(hergfracs), np.array(hergerrs)
+    lergfracs, lergerrs = np.array(lergfracs), np.array(lergerrs)
+    ax2.fill_between(zcenters, hergfracs - hergerrs, hergfracs + hergerrs, alpha=0.5, color='lightseagreen', edgecolor='none')
+    ax2.fill_between(zcenters, lergfracs - lergerrs, lergfracs + lergerrs, alpha=0.5, color='green', edgecolor='none')
+    ax2.set_ylim(0, 1)
+    ax2.set_ylabel("Fraction")
+    ax2.text(0.6, 0.75, 'LERGs', color='green', fontsize=15)
+    ax2.text(1.1, 0.25, 'HERGs', color='lightseagreen', fontsize=15)
+
+    plt.subplots_adjust(hspace=0)
     plt.savefig(plotdir + 'lum_z.pdf')
     plt.close('all')
 
@@ -636,11 +680,23 @@ def rg_fraction():
     print('Fraction of bright HzRGs are actually SFGs: %s' % (len(hisfgs)/len(bright_hzrgs)))
     print('Fraction of bright IzRGs are actually SFGs: %s' % (len(isfgs) / len(bright_izrgs)))
 
+def test_selections():
+    hzrg = sample.hzrg_sample()
+    izrg = sample.izrg_sample()
+    lzrg = sample.lzrg_sample()
+    rand = sample.lotss_randoms()
+
+    hzrg.write('catalogs/rgs/hzrg.fits', overwrite=True)
+    izrg.write('catalogs/rgs/izrg.fits', overwrite=True)
+    lzrg.write('catalogs/rgs/lzrg.fits', overwrite=True)
+    rand.write('catalogs/rgs/rand.fits', overwrite=True)
+
 #rg_fraction()
 #wisediagram(2.)
-wisediagram_both()
+#wisediagram_both()
 #both_redshift_dist()
 #izrg_redshift_dist(7)
 #hostgals(True)
-#lum_redshift(True, True)
+lum_redshift(True, True)
 #heating_contribution(fcuthi=3.)
+#test_selections()

@@ -43,13 +43,13 @@ def interp_density_brighter_than_lum(z, lcut, lmax=29, lftype='agn'):
     :param lmax:
     :return:
     """
-
+    ragn0_03 = pd.read_csv('results/kondapally23_agnlf/agn_0_03.csv', names=['lum', 'rho'])
     ragn05_1 = pd.read_csv('results/kondapally23_agnlf/%s_05_1.csv' % lftype, names=['lum', 'rho'])
     ragn1_15 = pd.read_csv('results/kondapally23_agnlf/%s_1_15.csv' % lftype, names=['lum', 'rho'])
     ragn15_2 = pd.read_csv('results/kondapally23_agnlf/%s_15_2.csv' % lftype, names=['lum', 'rho'])
     ragn2_25 = pd.read_csv('results/kondapally23_agnlf/%s_2_25.csv' % lftype, names=['lum', 'rho'])
-    zcenters = np.array([.75, 1.25, 1.75, 2.25])
-    tables = [ragn05_1, ragn1_15, ragn15_2, ragn2_25]
+    zcenters = np.array([0.21, .75, 1.25, 1.75, 2.25])
+    tables = [ragn0_03, ragn05_1, ragn1_15, ragn15_2, ragn2_25]
     #l150 = np.log10(fluxutils.luminosity_at_rest_nu(fluxcut, -0.7, .144, .15, zcenters, flux_unit=u.mJy, energy=False))
     dens = []
     for j in range(len(zcenters)):
@@ -141,6 +141,18 @@ def kinetic_lum_kondapally_l150(l150, fcav=4):
     totheat = np.trapz(interp_heat, lumgrid) * 1e7  # erg/s/Mpc^3
     return totheat"""
 
+def local_heating():
+    """
+    Convert local luminosity function to heating function
+    :return:
+    """
+    locallf = pd.read_csv('results/kondapally23_agnlf/agn_0_03.csv', names=['lum', 'rho'])
+    heats = kinetic_lum_kondapally_l150(locallf['lum'])*10**locallf['rho']
+    newdf = pd.DataFrame()
+    newdf['lum'] = locallf['lum']
+    newdf['heat'] = heats
+    return newdf
+
 def int_heat(heatfile, lmin, lmax=29):
     sortidx = np.argsort(heatfile['lum'])
     lum, heat = heatfile['lum'][sortidx], heatfile['heat'][sortidx]
@@ -150,12 +162,13 @@ def int_heat(heatfile, lmin, lmax=29):
     return hubbleunits.add_h_to_density(totheat)
 
 def interp_heat_above_lum(z, lmin, lmax=29, lftype='agn'):
+    heatlocal = local_heating()
     heat0 = pd.read_csv('results/kondapally_heating/z05_1_%s.csv' % lftype, names=['lum', 'heat'])
     heat1 = pd.read_csv('results/kondapally_heating/z1_15_%s.csv' % lftype, names=['lum', 'heat'])
     heat2 = pd.read_csv('results/kondapally_heating/z15_2_%s.csv' % lftype, names=['lum', 'heat'])
     heat3 = pd.read_csv('results/kondapally_heating/z2_25_%s.csv' % lftype, names=['lum', 'heat'])
-    heatfiles = [heat0, heat1, heat2, heat3]
-    zs = [0.75, 1.25, 1.75, 2.25]
+    heatfiles = [heatlocal, heat0, heat1, heat2, heat3]
+    zs = [0.21, 0.75, 1.25, 1.75, 2.25]
 
     totheats = []
     for j in range(len(heatfiles)):
