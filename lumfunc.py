@@ -25,6 +25,13 @@ def integrate_lf_data(l_grid, logl_tab, log_rho):
 
 
 def integrate_lf_model(lftab, lmin, lmax=29):
+    """
+    Integrate a radio luminosity function above a threshold luminosity lmin, up to default max luminosity 10^29 W/Hz
+    :param lftab:
+    :param lmin:
+    :param lmax:
+    :return:
+    """
     lgrid = np.linspace(lmin, lmax, 100)
     sortidx = np.argsort(lftab['lum'])
     lum, rho = lftab['lum'][sortidx], lftab['rho'][sortidx]
@@ -175,6 +182,49 @@ def interp_heat_above_lum(z, lmin, lmax=29, lftype='agn'):
         totheats.append(np.log10(int_heat(heatfiles[j], lmin, lmax)))
     return 10 ** np.interp(z, zs, totheats)
 
+def stepfunc_hod(mgrid, logminmass):
+    """
+    Heaviside step function HOD, 1 if above logminmass, 0 else
+    :param mgrid:
+    :param logminmass:
+    :return:
+    """
+    return np.heaviside(np.log10(mgrid)-logminmass, 1.)
+
+def dens_above_cut_stepfunc_hod(z, hod_logminmass, logmass_integral_bound, sigM=None):
+    from halomodelpy import bias_tools
+    """
+    For a step function HOD with Mmin=hod_logminmass, integrate HOD*HMF above a different mass threshold
+    to get the density of galaxies in halos more massive than logmass_integral_bound
+    :param z:
+    :param hod_logminmass:
+    :param logmass_integral_bound:
+    :return:
+    """
+    if sigM is None:
+        mgrid = np.logspace(11, 15, 1000)
+        hod = stepfunc_hod(mgrid=mgrid, logminmass=hod_logminmass)
+    else:
+        mgrid = bias_tools.paramobj.mass_space
+        hod = bias_tools.ncen_zheng(logMmin=hod_logminmass, sigma=sigM)
+    above_bound = np.where(np.log10(mgrid) >= logmass_integral_bound)
+    mgrid, hod = mgrid[above_bound], hod[above_bound]
+    return hubbleunits.add_h_to_density(np.trapz(hod * cosmo.hmf_z(np.log10(mgrid), z), x=np.log(mgrid)))
+
+
+def fraction_above_cut_stepfunc_hod(z, hod_logminmass, logmass_integral_bound, sigM=None):
+    return dens_above_cut_stepfunc_hod(z, hod_logminmass, logmass_integral_bound, sigM=sigM) / \
+           dens_above_cut_stepfunc_hod(z, hod_logminmass, logmass_integral_bound=11., sigM=sigM)
+
+def fraction_above_cut_zrange(zrange, hod_logminmass, logmass_integral_bound, sigM=None):
+    dndz = redshift_helper.dndz_from_z_list(np.random.uniform(zrange[0], zrange[1], 10000), 10)
+    fracs = []
+    for z in dndz[0]:
+        fracs.append(fraction_above_cut_stepfunc_hod(z, hod_logminmass, logmass_integral_bound, sigM=sigM))
+    return np.trapz(np.array(fracs)*dndz[1], x=dndz[0])
+
+
+
 
 def heating_fluxlim_dndz(dndz, fluxcut, fluxmax=None, lftype='agn'):
     """
@@ -212,14 +262,15 @@ def heat_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None, lftype='agn'
     halodens = luminosityfunction.hmf_zrange(zrange=zrange, logminmass=logminmass)
     return heatdens / halodens
 
-def energy_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None, lftype='agn', avg_power=False):
-    dutycycle = occupation_zrange(zrange=zrange, logminmass=logminmass, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
+def energy_per_halo_zrange(zrange, logminmass_hod, logminmass_cut, fluxcut, fluxmax=None, lftype='agn', avg_power=False, sigM=None):
+    dutycycle_cut = occupation_zrange(zrange=zrange, logminmass=logminmass_cut, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
     if avg_power:
         elapsedtime = 1.
     else:
         elapsedtime = (apcosmo.age(zrange[0]) - apcosmo.age(zrange[1])).to('s').value
-    heatperhalo = heat_per_halo_zrange(zrange=zrange, logminmass=logminmass, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
-    return np.log10(dutycycle * elapsedtime * heatperhalo)
+    heatperhalo_cut = heat_per_halo_zrange(zrange=zrange, logminmass=logminmass_cut, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
+    frac_above_cut = fraction_above_cut_zrange(zrange=zrange, hod_logminmass=logminmass_hod, logmass_integral_bound=logminmass_cut, sigM=sigM)
+    return np.log10(dutycycle_cut * frac_above_cut * elapsedtime * heatperhalo_cut)
 
 
 def mgas_from_mhalo(logmh):
@@ -297,7 +348,6 @@ def hod_density_above_m(hodparams, fduty, eff_z, logm_min):
 
 
 
-
 def desiqso_hod_dens(z, logminmass=12.):
     qsohod = pd.read_csv('results/hod/desi_qso/desi_qso_hod.csv', names=['M', 'hod'])
     sortidx = np.argsort(qsohod['M'])
@@ -319,6 +369,7 @@ def type1_windheatperhalo(zrange, logminmass, kinetic_frac=0.005):
         40, midz)
 
     qso_frac_in_massive_halos = desiqso_massive_frac(midz, logminmass)
+
     halodens = luminosityfunction.hmf_zrange(zrange, logminmass)
 
     return np.log10(agn_windenergy_per_volume * qso_frac_all_agn * qso_frac_in_massive_halos / halodens)

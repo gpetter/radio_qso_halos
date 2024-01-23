@@ -16,6 +16,7 @@ midc = '#ff4d00'
 lowc = '#ffc100'
 qso_c = 'teal'
 
+color_dict = {'lzrg': lowc, 'izrg': midc, 'hzrg': hic}
 
 from halomodelpy import cosmo
 def z2lbt(zs):
@@ -41,6 +42,7 @@ def halomass(elg=False ,lzrg=True):
 
     hzrglensfit = read_pickle('results/lensfits/hzrg.pickle')
     izrgfit = read_pickle('results/fits/auto/izrg.pickle')
+    lzrgautofit = read_pickle('results/fits/auto/lzrg.pickle')
 
 
     fig, ax = plt.subplots(figsize=(8, 7))
@@ -48,6 +50,8 @@ def halomass(elg=False ,lzrg=True):
     if lzrg:
         lzrgfit = read_pickle('results/fits/tomo/rg_lowz_fit.pickle')
         plt.errorbar([lzrgfit['eff_z']], [lzrgfit['Mx']], [lzrgfit['sigMx']], color=lowc, fmt='X', label=r'LzRG $\times$ BOSS')
+        plt.errorbar([lzrgautofit['eff_z']], [lzrgautofit['M']], [lzrgautofit['sigM']], color=lowc, fmt='o',
+                     label=r'LzRG auto')
 
     plt.errorbar(izrgfit['eff_z'], izrgfit['M'], izrgfit['sigM'], color=midc, fmt='o', label='IzRG auto')
 
@@ -207,7 +211,22 @@ def cross_lzrg():
     plt.savefig(plotdir + 'lzrg_xcf.pdf')
     plt.close('all')
 
+def auto_lzrg():
+    plt.figure(figsize=(8, 7))
 
+
+    cf = read_pickle('results/cfs/auto/lzrg.pickle')
+    fit = read_pickle('results/fits/auto/lzrg.pickle')
+    plt.plot(fit['modscales'], fit['dmcf'], c='k', ls='dotted')
+    plt.errorbar(cf['theta'], cf['w_theta'], yerr=cf['w_err'], color=lowc, fmt='o')
+    plt.plot(fit['modscales'], fit['autofitcf'], c=lowc, ls='dashed')
+    plt.xscale('log')
+    plt.yscale('log')
+
+    plt.xlim(2e-2, 2)
+
+    plt.savefig(plotdir + 'lzrg_autocf.pdf')
+    plt.close('all')
 
 
 def hzrg_lenscorr():
@@ -329,107 +348,71 @@ def lenscorrs(hod=True, both=False):
     plt.close('all')
 
 
-def autocorrs(hod=True, showlens=True):
+def autocorrs(samples=('lzrg', 'izrg', 'hzrg'), hod=True, showlens=True):
 
     from halomodelpy import cosmo
+    naxes = len(samples)
 
-    fig, (ax, ax2) = plt.subplots(2, 1, figsize=(8, 14), sharex=True)
+    labels = {'lzrg': 'LzRG Clustering', 'izrg': 'IzRG Clustering', 'hzrg': 'HzRG Clustering'}
+
+
+    fig, axs = plt.subplots(naxes, 1, figsize=(8, naxes*7), sharex=True)
     plt.xlim(5e-3, 1e0)
     plt.xlabel(r'Separation $\theta$ [deg]')
-    hzrgfit = read_pickle('results/fits/auto/hzrg.pickle')
-    hzrgcf = read_pickle('results/cfs/auto/hzrg.pickle')
-    hzrg_refangle = cosmo.rp2angle(1., hzrgfit['eff_z'])
 
-    izrgfit = read_pickle('results/fits/auto/izrg.pickle')
-    izrgcf = read_pickle('results/cfs/auto/izrg.pickle')
-    izrg_refangle = cosmo.rp2angle(1., izrgfit['eff_z'])
+    for j in range(naxes):
+        samp = samples[j]
+        fit = read_pickle('results/fits/auto/%s.pickle' % samp)
+        cf = read_pickle('results/cfs/auto/%s.pickle' % samp)
+        refangle = cosmo.rp2angle(1., fit['eff_z'])
 
-    linidx, nonlinidx = izrgcf['linidx'], izrgcf['nonlinidx']
-    lintheta, lincf, linerr = izrgcf['theta'][linidx], izrgcf['w_theta'][linidx], izrgcf['w_err'][linidx]
-    nonlintheta, nonlincf, nonlinerr = izrgcf['theta'][nonlinidx], izrgcf['w_theta'][nonlinidx], izrgcf['w_err'][nonlinidx]
-    #if showlens:
-        #izrglensfit = read_pickle('results/lensfits/hzrg.pickle')
-        #lensb, lenssigb = izrglensfit['b'], izrglensfit['sigb']
-        #ax.fill_between(izrgfit['modscales'], ((lensb - lenssigb) ** 2) * izrgfit['dmcf'],
-        #                 ((lensb + lenssigb) ** 2) * izrgfit['dmcf'], color=midc, alpha=0.1, edgecolor='none', label=r'$b_{\mathrm{CMB}}$')
+        sampcolor = color_dict[samp]
 
-    ax.errorbar(lintheta, lincf, linerr, fmt='o', color=midc)
-    ax.errorbar(nonlintheta, nonlincf, nonlinerr, fmt='o', markerfacecolor='none', markeredgecolor=midc, ecolor=midc)
-    ax.plot(izrgfit['modscales'], izrgfit['dmcf'], ls='dotted', c='k')
-    ax.text(izrgfit['modscales'][int(len(izrgfit['dmcf']) / 2)],
-             izrgfit['dmcf'][int(len(izrgfit['dmcf']) / 2)] / 2., 'Matter', rotation=-12, fontsize=15)
-    ax.plot(izrgfit['modscales'], izrgfit['autofitcf'], ls='dashed', c=midc)
-    ax.set_yscale('log')
-    ax.set_xscale('log')
-    ax.set_ylabel(r'Autocorrelation function $w(\theta)$')
-    ax.text(.65, .9, 'IzRG Clustering', transform=ax.transAxes, fontsize=20, color=midc)
+        linidx, nonlinidx = cf['linidx'], cf['nonlinidx']
+        lintheta, lincf, linerr = cf['theta'][linidx], cf['w_theta'][linidx], cf['w_err'][linidx]
+        nonlintheta, nonlincf, nonlinerr = cf['theta'][nonlinidx], cf['w_theta'][nonlinidx], cf['w_err'][nonlinidx]
 
-    ax.axvline(izrg_refangle, color='k', alpha=0.3, ls='dotted')
-    ax.text(izrg_refangle * 1.3, 4e-1, r'$r_p \sim 1$ Mpc/h', rotation=90, color='k', alpha=0.5, fontsize=15)
+        axs[j].errorbar(lintheta, lincf, linerr, fmt='o', color=sampcolor)
+        axs[j].errorbar(nonlintheta, nonlincf, nonlinerr, fmt='o', markerfacecolor='none', markeredgecolor=sampcolor,
+                    ecolor=sampcolor)
+        axs[j].plot(fit['modscales'], fit['dmcf'], ls='dotted', c='k')
+        axs[j].text(fit['modscales'][int(len(fit['dmcf']) / 2)],
+                fit['dmcf'][int(len(fit['dmcf']) / 2)] / 2., 'Matter', rotation=-12, fontsize=15)
+        axs[j].plot(fit['modscales'], fit['autofitcf'], ls='dashed', c=sampcolor)
+        axs[j].set_yscale('log')
+        axs[j].set_xscale('log')
+        axs[j].set_ylabel(r'Autocorrelation function $w(\theta)$')
+        axs[j].text(.65, .9, labels[samp], transform=axs[j].transAxes, fontsize=20, color=sampcolor)
 
+        axs[j].axvline(refangle, color='k', alpha=0.3, ls='dotted')
+        axs[j].text(refangle * 1.3, 4e-1, r'$r_p \sim 1$ Mpc/h', rotation=90, color='k', alpha=0.5, fontsize=15)
 
-    if hod:
-        modthetas = np.logspace(-2.5, 0., 100)
-        from halomodelpy import hm_calcs, mcmc
-        dndz = read_pickle('results/dndz/izrg.pickle')
-        izrgchain = read_pickle('results/hod/izrg.pickle')['chain']
-        hm = hm_calcs.halomodel(dndz)
-
-        newchain = izrgchain[np.random.choice(len(izrgchain), 100, replace=False)]
-        for j in range(len(newchain)):
-            paramset = list(newchain[j])
-            hm.set_powspec(hodparams=mcmc.parse_params(paramset, ['M', 'sigM', 'M1', 'alpha']))
-            cf = hm.get_ang_cf(modthetas)
-            ax.plot(modthetas, cf, alpha=0.1, rasterized=True, c=midc, ls='dotted')
-
-
-        dndz = read_pickle('results/dndz/hzrg.pickle')
-        hzrgchain = read_pickle('results/hod/hzrg.pickle')['chain']
-        hm = hm_calcs.halomodel(dndz)
-
-        newchain = hzrgchain[np.random.choice(len(hzrgchain), 100, replace=False)]
-        for j in range(len(newchain)):
-            paramset = list(newchain[j])
-            hm.set_powspec(hodparams=mcmc.parse_params(paramset, ['M', 'sigM', 'M1', 'alpha']))
-            cf = hm.get_ang_cf(modthetas)
-            ax2.plot(modthetas, cf, alpha=0.1, rasterized=True, c=hic, ls='dotted')
-
-
-
-    linidx, nonlinidx = hzrgcf['linidx'], hzrgcf['nonlinidx']
-    lintheta, lincf, linerr = hzrgcf['theta'][linidx], hzrgcf['w_theta'][linidx], hzrgcf['w_err'][linidx]
-    nonlintheta, nonlincf, nonlinerr = hzrgcf['theta'][nonlinidx], hzrgcf['w_theta'][nonlinidx], hzrgcf['w_err'][
-        nonlinidx]
-
-
-
-    ax2.errorbar(lintheta, lincf, linerr, fmt='o', color=hic)
-    ax2.errorbar(nonlintheta, nonlincf, nonlinerr, fmt='o', markerfacecolor='none', markeredgecolor=hic, ecolor=hic)
-    ax2.plot(hzrgfit['modscales'], hzrgfit['dmcf'], ls='dotted', c='k')
-    ax2.axvline(hzrg_refangle, color='k', alpha=0.3, ls='dotted')
-
-
-    if showlens:
-        hzrglensfit = read_pickle('results/lensfits/hzrg.pickle')
-        lensb, lenssigb = hzrglensfit['b'], hzrglensfit['sigb']
-        ax2.fill_between(hzrgfit['modscales'], ((lensb-lenssigb) ** 2) * hzrgfit['dmcf'],
-                         ((lensb+lenssigb) ** 2) * hzrgfit['dmcf'], color=hic, alpha=0.1, edgecolor='none',
-                         label=r'$b_{\mathrm{CMB}}$')
+        if showlens and samp == 'hzrg':
+            hzrglensfit = read_pickle('results/lensfits/hzrg.pickle')
+            lensb, lenssigb = hzrglensfit['b'], hzrglensfit['sigb']
+            axs[j].fill_between(fit['modscales'], ((lensb - lenssigb) ** 2) * fit['dmcf'],
+                             ((lensb + lenssigb) ** 2) * fit['dmcf'], color=hic, alpha=0.1, edgecolor='none',
+                             label=r'$b_{\mathrm{CMB}}$')
 
 
 
 
+        if hod:
+            modthetas = np.logspace(-2.5, 0., 100)
+            from halomodelpy import hm_calcs, mcmc
+            dndz = read_pickle('results/dndz/%s.pickle' % samp)
+            chain = read_pickle('results/hod/%s.pickle' % samp)['chain']
+            hm = hm_calcs.halomodel(dndz)
 
-    ax2.text(hzrgfit['modscales'][int(len(hzrgfit['dmcf'])/2)],
-             hzrgfit['dmcf'][int(len(hzrgfit['dmcf'])/2)] / 2., 'Matter', rotation=-12, fontsize=15)
-    ax2.plot(hzrgfit['modscales'], hzrgfit['autofitcf'], ls='dashed', c=hic, label='Linear fit')
-    ax2.set_yscale('log')
-    ax2.set_xscale('log')
-    ax2.set_ylabel(r'Autocorrelation function $w(\theta)$')
-    ax2.set_ylim(2e-4, 2e0)
-    ax2.text(.65, .9, 'HzRG Clustering', transform=ax2.transAxes, fontsize=20, color=hic)
+            newchain = chain[np.random.choice(len(chain), 100, replace=False)]
+            for k in range(len(newchain)):
+                paramset = list(newchain[k])
+                hm.set_powspec(hodparams=mcmc.parse_params(paramset, ['M', 'sigM', 'M1', 'alpha']))
+                cf = hm.get_ang_cf(modthetas)
+                axs[j].plot(modthetas, cf, alpha=0.1, rasterized=True, c=sampcolor, ls='dotted')
 
-    ax2.legend(loc='lower left')
+
+
     plt.subplots_adjust(hspace=0)
     plt.savefig(plotdir + 'autocorrelations.pdf')
     plt.close('all')
@@ -464,33 +447,60 @@ def corners(smooth=1, fsats=True):
     plt.close('all')
 
 def hods():
-    fig, (ax, ax2) = plt.subplots(nrows=2, ncols=1, figsize=(8, 14), sharex=True)
     from halomodelpy import hod_model
-    izrgchain = read_pickle('results/hod/izrg.pickle')['chain']
-    hzrgchain = read_pickle('results/hod/hzrg.pickle')['chain']
-    plt.xlim(12, 14.5)
+    traces = False
+    samps = ['lzrg', 'izrg', 'hzrg']
 
-    newchain = izrgchain[np.random.choice(len(izrgchain), 100, replace=False)]
-    for j in range(len(newchain)):
-        paramset = list(newchain[j])
-        hod = hod_model.zheng_hod(paramset, ['M', 'sigM', 'M1', 'alpha'])
-        ax.plot(hod['mgrid'], hod['hod'], alpha=0.2, rasterized=True, c=midc, ls='dotted')
-    ax.set_ylim(1e-1, 5e1)
-    ax.set_ylabel('Number per halo')
-    ax.set_yscale('log')
+    if traces:
+        fig, (ax, ax2) = plt.subplots(nrows=2, ncols=1, figsize=(8, 14), sharex=True)
 
-    newchain = hzrgchain[np.random.choice(len(hzrgchain), 100, replace=False)]
-    for j in range(len(newchain)):
-        paramset = list(newchain[j])
-        hod = hod_model.zheng_hod(paramset, ['M', 'sigM', 'M1', 'alpha'])
-        ax2.plot(hod['mgrid'], hod['hod'], alpha=0.2, rasterized=True, c=hic, ls='dotted')
-    ax2.set_ylim(1e-1, 5e1)
-    ax2.set_ylabel('Number per halo')
-    ax2.set_yscale('log')
+        izrgchain = read_pickle('results/hod/izrg.pickle')['chain']
+        hzrgchain = read_pickle('results/hod/hzrg.pickle')['chain']
+        plt.xlim(12, 14.5)
+
+        newchain = izrgchain[np.random.choice(len(izrgchain), 100, replace=False)]
+        for j in range(len(newchain)):
+            paramset = list(newchain[j])
+            hod = hod_model.zheng_hod(paramset, ['M', 'sigM', 'M1', 'alpha'])
+            ax.plot(hod['mgrid'], hod['hod'], alpha=0.2, rasterized=True, c=midc, ls='dotted')
+        ax.set_ylim(1e-1, 5e1)
+        ax.set_ylabel('Number per halo')
+        ax.set_yscale('log')
+
+        newchain = hzrgchain[np.random.choice(len(hzrgchain), 100, replace=False)]
+        for j in range(len(newchain)):
+            paramset = list(newchain[j])
+            hod = hod_model.zheng_hod(paramset, ['M', 'sigM', 'M1', 'alpha'])
+            ax2.plot(hod['mgrid'], hod['hod'], alpha=0.2, rasterized=True, c=hic, ls='dotted')
+        ax2.set_ylim(1e-1, 5e1)
+        ax2.set_ylabel('Number per halo')
+        ax2.set_yscale('log')
 
 
-    ax2.set_xlabel(r'log$(\mathrm{Halo \ mass} \ [h^{-1} M_{\odot}])$')
-    plt.subplots_adjust(hspace=0)
+        ax2.set_xlabel(r'log$(\mathrm{Halo \ mass} \ [h^{-1} M_{\odot}])$')
+        plt.subplots_adjust(hspace=0)
+    else:
+        fig = plt.figure(figsize=(8, 7))
+        plt.xlim(12, 14.5)
+        plt.xlabel(r'log$(\mathrm{Halo \ mass} \ [h^{-1} M_{\odot}])$')
+        for k, samp in enumerate(samps):
+            chain = read_pickle('results/hod/%s.pickle' % samp)['chain']
+            hod_arr = []
+            mgrid = hod_model.zheng_hod(chain[0], ['M', 'sigM', 'M1', 'alpha'])['mgrid']
+            for j in range(len(chain)):
+                paramset = list(chain[j])
+                hod_arr.append(np.log10(hod_model.zheng_hod(paramset, ['M', 'sigM', 'M1', 'alpha'])['hod']))
+            hod_arr = np.array(hod_arr)
+            upbounds, lobounds = [], []
+            for j in range(len(mgrid)):
+                upbounds.append(10**np.percentile(hod_arr[:, j], 84))
+                lobounds.append(10**np.percentile(hod_arr[:, j], 16))
+            plt.fill_between(mgrid, lobounds, upbounds, color=color_dict[samp], alpha=0.2)
+            plt.yscale('log')
+            plt.ylim(1e-1, 5e1)
+            plt.ylabel('Number per halo')
+
+
     plt.savefig(plotdir + 'hods.pdf')
     plt.close('all')
 
@@ -672,4 +682,18 @@ def avghalopower(lzrgs, izrgs, hzrgs, qsowindinfo):
     plt.savefig(plotdir + 'halopower.pdf', dpi=300)
     plt.close('all')
 
-halomass()
+def halopower_ratios(mcut_grid, lzrgs, izrgs):
+    fig, ax = plt.subplots(figsize=(8, 7))
+
+    ax.fill_between(mcut_grid, lzrgs[:, 0], lzrgs[:, 1], color=lowc, alpha=0.2, edgecolor='none', label=r'$0.25 < z < 0.5$')
+    ax.fill_between(mcut_grid, izrgs[:, 0], izrgs[:, 1], color=midc, alpha=0.2, edgecolor='none', label=r'$0.5 < z < 1$')
+
+    ax.axhline(1., c='k', ls='--')
+    ax.set_xlabel(r'log(Minimum halo mass $[h^{-1} M_{\odot}]$)')
+    ax.set_yscale('log')
+    ax.set_ylabel(r'$\langle$ Jet power $\rangle$ /  $\langle$ Wind power $\rangle$')
+
+    ax.legend()
+    plt.savefig(plotdir + 'halopower_ratio.pdf', dpi=300)
+    plt.close('all')
+

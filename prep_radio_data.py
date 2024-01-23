@@ -35,8 +35,25 @@ def cut_duplicates():
     lotss['DEC_cw'] = np.array(lotss['DEC_cw'])
     # cut negative redshifts
     lotss['zphot'][np.where(lotss['zphot'] < 0.0001)] = np.nan
-    lotss['L150'] = np.log10(fluxutils.luminosity_at_rest_nu(lotss['Total_flux'], alpha=-0.7, nu_obs=.144, nu_rest_want=.15, z=lotss['zphot'], flux_unit=u.mJy, energy=False))
-    lotss['RA', 'DEC', 'Total_flux', 'Peak_flux', 'Maj', 'RA_cw', 'DEC_cw', 'W1_cw', 'W2_cw', 'sep_cw', 'zphot', 'L150', 'z_desi'].write('catalogs/LoTSS.fits', overwrite=True)
+
+    # https://catalog.unwise.me/catalogs.html
+    lotss['W1_uw'] = lotss['mag_w1'] - 2.699
+    lotss['W2_uw'] = lotss['mag_w2'] - 3.339
+
+    #use_cw_w1 = np.where((np.logical_not(np.isfinite(lotss['W1']))) & (lotss['sep_cw'] < 2.5))
+    # use CatWISE instead of unWISE when a good match
+    #use_cw = np.where((lotss['sep_cw'] < 2.5))
+    #lotss['W1'][use_cw] = lotss['W1_cw'][use_cw]
+    #lotss['W2'][use_cw] = lotss['W2_cw'][use_cw]
+    #lotss['RA'][use_cw] = lotss['RA_cw'][use_cw]
+    #lotss['DEC'][use_cw] = lotss['DEC_cw'][use_cw]
+
+    lotss['L150'] = np.log10(fluxutils.luminosity_at_rest_nu(lotss['Total_flux'], alpha=-0.7, nu_obs=.144,
+                                                             nu_rest_want=.15, z=lotss['zphot'],
+                                                             flux_unit=u.mJy, energy=False))
+    lotss['RA', 'DEC', 'Total_flux',
+          'Peak_flux', 'Maj', 'W1_uw', 'W2_uw', 'W1_cw', 'W2_cw',
+          'zphot', 'L150', 'z_desi', 'Resolved', 'LAS', 'sep_cw'].write('catalogs/LoTSS.fits', overwrite=True)
 
 def highres_lotss_dr2_noise_map(outputmap_nside=4096):
     scratch_space = '.'

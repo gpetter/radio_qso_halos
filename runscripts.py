@@ -8,6 +8,7 @@ linscales = np.logspace(0.7, 1.4, 11)
 lensscales = np.logspace(0.7, 1.4, 8)
 hodscales = np.logspace(-0.5, 1.4, 21)
 
+#sample.total_clustering_sample()
 # Step 0, download Hardcastle+23 catalog, match to CatWISE2020
 
 # Step 1, make LoTSS catalog
@@ -17,12 +18,15 @@ hodscales = np.logspace(-0.5, 1.4, 21)
 #radiogalaxy_sample.wisediagram_both()
 #radiogalaxy_sample.both_redshift_dist()
 #radiogalaxy_sample.lum_redshift()
+print('HzRG mag bias is %s pm %s' % sample.estimate_rg_magbias('hzrg'))
+print('IzRG mag bias is %s pm %s' % sample.estimate_rg_magbias('izrg'))
 
 # 3. Check redshift distributions with tomographer.org
 #sample.maketomographer_files(128, 'lo')
 
 # 4. Cross correlate LzRGs with BOSS galaxies
 #measurements.lzrg_xcorr(linscales)
+#measurements.autocorr_lzrgs(hodscales)
 
 # 5. Autoclustering of IzRGs
 #measurements.autocorr_izrgs(hodscales)
@@ -33,9 +37,12 @@ hodscales = np.logspace(-0.5, 1.4, 21)
 #measurements.hzrg_xcorr(rpscales=linscales)
 
 # 7. Fit autocorrelations with HOD
-#measurements.izrghod_fit(niter=1000, freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 1., 13.5, .8])
-#measurements.hzrghod_fit(niter=1000, freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 0.5, 14, .8])
+#measurements.hodfit('lzrg', niter=1000, freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 1., 13.5, .8])
+#measurements.hodfit('izrg', niter=1000, freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 1., 13.5, .8])
+#measurements.hodfit('hzrg', niter=1000, freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 0.5, 14, .8])
+
 
 # 8. Determine duty cycle and energy injection
 #measurements.duty_cycle()
 #measurements.halopower()
+#measurements.halopower_ratio()
