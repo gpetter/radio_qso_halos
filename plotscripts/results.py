@@ -385,7 +385,8 @@ def autocorrs(samples=('lzrg', 'izrg', 'hzrg'), hod=True, showlens=True):
         axs[j].text(.65, .9, labels[samp], transform=axs[j].transAxes, fontsize=20, color=sampcolor)
 
         axs[j].axvline(refangle, color='k', alpha=0.3, ls='dotted')
-        axs[j].text(refangle * 1.3, 4e-1, r'$r_p \sim 1$ Mpc/h', rotation=90, color='k', alpha=0.5, fontsize=15)
+        if j == 0:
+            axs[j].text(refangle * 1.3, 7e-1, r'$r_p \sim 1$ Mpc/h', rotation=90, color='k', alpha=0.5, fontsize=15)
 
         if showlens and samp == 'hzrg':
             hzrglensfit = read_pickle('results/lensfits/hzrg.pickle')
@@ -421,27 +422,32 @@ def autocorrs(samples=('lzrg', 'izrg', 'hzrg'), hod=True, showlens=True):
 def corners(smooth=1, fsats=True):
     import corner
     from halomodelpy import hod_model
-    izrgchain = read_pickle('results/hod/izrg.pickle')['chain']
-    hzrgchain = read_pickle('results/hod/hzrg.pickle')['chain']
+    samps = ['lzrg', 'izrg', 'hzrg']
+    chain = read_pickle('results/hod/%s.pickle' % samps[0])['chain']
+
     labels = [r'log$M_{\mathrm{min}}$', r'$\sigma_{\mathrm{log}M}$', r'log$M_1$', r'$\alpha$']
     if fsats:
-        dndz = read_pickle('results/dndz/izrg.pickle')
-        izrgchain = np.insert(izrgchain, 4, np.log10(hod_model.fsat_dndz(dndz, izrgchain, ['M', 'sigM', 'M1', 'alpha'])), 1)
-
-        dndz = read_pickle('results/dndz/hzrg.pickle')
-        hzrgchain = np.insert(hzrgchain, 4, np.log10(hod_model.fsat_dndz(dndz, hzrgchain, ['M', 'sigM', 'M1', 'alpha'])), 1)
+        dndz = read_pickle('results/dndz/%s.pickle' % samps[0])
+        chain = np.insert(chain, 4, np.log10(hod_model.fsat_dndz(dndz, chain, ['M', 'sigM', 'M1', 'alpha'])), 1)
         labels.append(r'log$f_{\mathrm{sat}}$')
 
-    fig = corner.corner(izrgchain, color=midc, alpha=0.3, smooth=smooth, labels=labels,
+    fig = corner.corner(chain, color=midc, alpha=0.3, smooth=smooth, labels=labels,
                         plot_datapoints=False, levels=(1 - np.exp(-0.5), 1 - np.exp(-2)),
                         plot_density=False,
                         fill_contours=True,
                         )
-    corner.corner(hzrgchain, fig=fig, color=hic, alpha=0.3, smooth=smooth,
-                  plot_datapoints=False, levels=(1 - np.exp(-0.5), 1 - np.exp(-2)),
-                  plot_density=False,
-                  fill_contours=True,
-                  )
+    for j in range(1, len(samps)):
+        chain = read_pickle('results/hod/%s.pickle' % samps[j])['chain']
+
+        if fsats:
+            dndz = read_pickle('results/dndz/%s.pickle' % samps[j])
+            chain = np.insert(chain, 4, np.log10(hod_model.fsat_dndz(dndz, chain, ['M', 'sigM', 'M1', 'alpha'])), 1)
+
+        corner.corner(chain, fig=fig, color=color_dict[samps[j]], alpha=0.3, smooth=smooth,
+                      plot_datapoints=False, levels=(1 - np.exp(-0.5), 1 - np.exp(-2)),
+                      plot_density=False,
+                      fill_contours=True,
+                      )
 
     plt.savefig(plotdir + 'corner.pdf')
     plt.close('all')

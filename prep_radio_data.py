@@ -1,19 +1,42 @@
-from SkyTools import healpixhelper, coordhelper, fluxutils
+from SkyTools import healpixhelper, coordhelper, fluxutils, bitmaskhelper
 import numpy as np
 import healpy as hp
 import astropy.units as u
 from mocpy import MOC
 from astropy.io import fits
 from astropy.wcs import WCS
-from astropy.table import Table
+from astropy.table import Table, vstack
 import os
+import glob
+
+def prepfor_wisematch():
+    """
+    Process raw Hardcastle+23 catalog, output catalog ready to update by crossmatching with CatWISE2020
+    :return:
+    """
+    t = Table.read('../data/radio_cats/LOTSS_DR2/combined-release-v1.1-LM_opt_mass.fits')
+    # only intersted in AGN which are bright, and want flux-complete sample, make cut on flux to reduce size, 1.5 mJy
+    t = t[np.where(t['Total_flux'] > 1.5)]
+    # make a new "best" RA/DEC column, using optical/IR position when available, else falling back to radio position
+    t.rename_columns(['RA', 'DEC'], ['radRA', 'radDEC'])
+    t.rename_columns(['ra', 'dec'], ['ls_ra', 'ls_dec'])
+    t['RA'] = t['radRA']
+    t['DEC'] = t['radDEC']
+    good_id = np.where(np.isfinite(t['ID_RA']))
+    t['RA'][good_id] = t['ID_RA'][good_id]
+    t['DEC'][good_id] = t['ID_DEC'][good_id]
+
+    # write out, take to TOPCAT to match with CatWISE using best coordinates
+    t.write('catalogs/H23_prepped.fits', overwrite=True)
+
+
 def cut_duplicates():
     """
     Prep LoTSS DR2 catalog
-    remove sources which are both matched to the same WISE source
+    If two or more sources are matched to the same WISE source, only set WISE counterpart be assigned to the closest one
     :return:
     """
-    lotss = Table.read('../data/radio_cats/LOTSS_DR2/LoTSS_DR2_src_bright_cw.fits')
+    lotss = Table.read('catalogs/H23_cw.fits')
     lotss = lotss[np.where(lotss['Total_flux'] > 1.5)]
 
     uniq, counts = np.unique(lotss['objID_cw'], return_counts=True)
@@ -54,6 +77,51 @@ def cut_duplicates():
     lotss['RA', 'DEC', 'Total_flux',
           'Peak_flux', 'Maj', 'W1_uw', 'W2_uw', 'W1_cw', 'W2_cw',
           'zphot', 'L150', 'z_desi', 'Resolved', 'LAS', 'sep_cw'].write('catalogs/LoTSS.fits', overwrite=True)
+
+
+def make_legacysurvey_mask():
+    """
+    Using Legacy Survey DR8 data for photometric redshifts, so want area with best LS data
+    :return:
+    """
+    rand = Table.read('../data/randoms/ls/dr8/randoms-inside-dr8-0.31.0-1.fits')
+    rand = rand[(rand['NOBS_G'] >= 3) & (rand['NOBS_R'] >= 3) & (rand['NOBS_Z'] >= 3)]
+    dens = healpixhelper.healpix_density_map(rand['RA'], rand['DEC'], 256)
+    dens[np.where(dens >= 1)] = 1
+    hp.write_map('masks/good_LS.fits', dens, overwrite=True)
+
+def make_ls_depth_map():
+    """
+    Using Legacy Survey DR8 data for photometric redshifts, so want area with best LS data
+    :return:
+    """
+    rand = Table.read('../data/randoms/ls/dr8/randoms-inside-dr8-0.31.0-1.fits')
+    rand =  rand[np.where(rand['PSFDEPTH_Z'] > 0)]
+    depths = -2.5*(np.log10(5/np.sqrt(rand['PSFDEPTH_Z']))-9)
+    meddepth = healpixhelper.healpix_median_in_pixels(256, (rand['RA'], rand['DEC']), depths)
+    hp.write_map('masks/LS_zdepth.fits', meddepth, overwrite=True)
+
+def make_bitmask_map(nside=4096):
+    randfiles = glob.glob('../data/randoms/ls/dr8/randoms-inside-dr8-0.31.0-*.fits')
+    tottab = Table()
+    for randfile in randfiles:
+        t = Table.read(randfile)
+        t = t[np.where(t['MASKBITS'] != 0)]
+        maskidxs = []
+        for k in range(len(t)):
+
+            bits = bitmaskhelper.parse_bitmask(t['MASKBITS'][k], 15)
+            if (1 in bits) | (8 in bits) | (9 in bits) | (12 in bits):
+                maskidxs.append(k)
+        maskidxs = np.array(maskidxs)
+        t = t[maskidxs]
+        t = t['RA', 'DEC']
+        tottab = vstack((tottab, t))
+    densmap = healpixhelper.healpix_density_map(tottab['RA'], tottab['DEC'], nsides=nside)
+    densmap[np.where(densmap > 0)] = 1
+    hp.write_map('masks/maskbits_map.fits', densmap, overwrite=True)
+
+
 
 def highres_lotss_dr2_noise_map(outputmap_nside=4096):
     scratch_space = '.'

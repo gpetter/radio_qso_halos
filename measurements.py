@@ -436,6 +436,46 @@ def lens_izrg(rpscales, nside=1024):
     fig.savefig(plotdir + 'izrg_lensing.pdf')
 
 
+def lumtrend(rpscales, nzbins=15, minz=0.5, maxz=0.8):
+    lbins = [24.75, 25., 25.5, 28]
+
+
+    lotss = sample.izrg_sample(lummin=24.5, minz=minz, maxz=maxz)
+
+    rand = sample.lotss_randoms()
+
+    duty, loerr, hierr, medlums = [], [], [], []
+    for j in range(len(lbins)-1):
+        lumlotss = lotss[np.where((lotss['L150'] > lbins[j]) & (lotss['L150'] <= lbins[j+1]))]
+        medlums.append(np.median(lumlotss['L150']))
+
+        zs = sample.treat_dndz_pdf(lumlotss)
+
+
+        dndz_lotss = redshift_helper.dndz_from_z_list(zs, nzbins, zrange=(0.1, 2.))
+
+        eff_z = np.median(zs)
+        thetabins = cosmo.rp2angle(rpscales, eff_z, True)
+
+        cf = twoPointCFs.autocorr_cat(thetabins, lumlotss, rand, nbootstrap=500)
+        cf, lincf = linear_cf(cf, eff_z)
+        fit = clustering_fit.fit_pipeline(dndz_lotss, lincf)
+
+        duty.append(lumfunc.occupation_lumbound_zrange(fit['Mmin'], zrange=(minz, maxz), lmin=lbins[j], lmax=lbins[j+1]))
+        hierr.append(lumfunc.occupation_lumbound_zrange(fit['Mmin']+fit['sigMmin'], zrange=(minz, maxz), lmin=lbins[j],
+                                                    lmax=lbins[j+1]))
+        loerr.append(lumfunc.occupation_lumbound_zrange(fit['Mmin']-fit['sigMmin'], zrange=(minz, maxz),
+                                                             lmin=lbins[j], lmax=lbins[j+1]))
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=(8,7))
+    plt.errorbar(medlums, duty, yerr=[loerr, hierr], fmt='o', color='k')
+    plt.yscale('log')
+    plt.ylim(1e-2, 2)
+    plt.savefig('/home/graysonpetter/Dropbox/radioplots/lum_duty.pdf')
+    plt.close('all')
+
+
+
 
 def duty_cycle():
     fluxcuthi = 2.
@@ -447,10 +487,10 @@ def duty_cycle():
 
     lzrgfit = read_pickle('results/fits/tomo/rg_lowz_fit.pickle')
 
-    dutylzrg = lumfunc.occupation_zrange(lzrgfit['Mxmin'], (0.25, 0.5), fluxcut=fluxcutlo, fluxmax=fluxmax, lftype='lerg')
-    lzrgloerr = dutylzrg - lumfunc.occupation_zrange(lzrgfit['Mxmin'] - lzrgfit['sigMxmin'], (0.25, 0.5),
+    dutylzrg = lumfunc.occupation_fluxlim_zrange(lzrgfit['Mxmin'], (0.25, 0.5), fluxcut=fluxcutlo, fluxmax=fluxmax, lftype='lerg')
+    lzrgloerr = dutylzrg - lumfunc.occupation_fluxlim_zrange(lzrgfit['Mxmin'] - lzrgfit['sigMxmin'], (0.25, 0.5),
                                                      fluxcut=fluxcutlo, fluxmax=fluxmax, lftype='lerg')
-    lzrghierr = lumfunc.occupation_zrange(lzrgfit['Mxmin'] + lzrgfit['sigMxmin'], (0.25, 0.5),
+    lzrghierr = lumfunc.occupation_fluxlim_zrange(lzrgfit['Mxmin'] + lzrgfit['sigMxmin'], (0.25, 0.5),
                                           fluxcut=fluxcutlo, fluxmax=fluxmax, lftype='lerg') - dutylzrg
 
     lzrgstuff = [lzrgfit['eff_z'], dutylzrg, lzrgloerr, lzrghierr]
@@ -458,10 +498,10 @@ def duty_cycle():
 
     izrgfit = read_pickle('results/fits/auto/izrg.pickle')
 
-    dutyizrg = lumfunc.occupation_zrange(izrgfit['Mmin'], (0.5, 1.), fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg')
-    izrgloerr = dutyizrg - lumfunc.occupation_zrange(izrgfit['Mmin']-izrgfit['sigMmin'], (0.5, 1.),
+    dutyizrg = lumfunc.occupation_fluxlim_zrange(izrgfit['Mmin'], (0.5, 1.), fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg')
+    izrgloerr = dutyizrg - lumfunc.occupation_fluxlim_zrange(izrgfit['Mmin']-izrgfit['sigMmin'], (0.5, 1.),
                                                      fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg')
-    izrghierr = lumfunc.occupation_zrange(izrgfit['Mmin'] + izrgfit['sigMmin'], (0.5, 1.),
+    izrghierr = lumfunc.occupation_fluxlim_zrange(izrgfit['Mmin'] + izrgfit['sigMmin'], (0.5, 1.),
                                                      fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg') - dutyizrg
 
     izrgstuff = [izrgfit['eff_z'], dutyizrg, izrgloerr, izrghierr]
@@ -469,10 +509,10 @@ def duty_cycle():
 
     hzrgfit = read_pickle('results/fits/auto/hzrg.pickle')
 
-    dutyhzrg = lumfunc.occupation_zrange(hzrgfit['Mmin'], (1., 2.), fluxcut=fluxcuthi, fluxmax=fluxmax, lftype='agn')
-    hzrgloerr = dutyhzrg - lumfunc.occupation_zrange(hzrgfit['Mmin'] - hzrgfit['sigMmin'], (1., 3.),
+    dutyhzrg = lumfunc.occupation_fluxlim_zrange(hzrgfit['Mmin'], (1., 2.), fluxcut=fluxcuthi, fluxmax=fluxmax, lftype='agn')
+    hzrgloerr = dutyhzrg - lumfunc.occupation_fluxlim_zrange(hzrgfit['Mmin'] - hzrgfit['sigMmin'], (1., 3.),
                                                      fluxcut=fluxcuthi, fluxmax=fluxmax, lftype='agn')
-    hzrghierr = lumfunc.occupation_zrange(hzrgfit['Mmin'] + hzrgfit['sigMmin'], (1., 3.),
+    hzrghierr = lumfunc.occupation_fluxlim_zrange(hzrgfit['Mmin'] + hzrgfit['sigMmin'], (1., 3.),
                                           fluxcut=fluxcuthi, fluxmax=fluxmax, lftype='agn') - dutyhzrg
 
     hzrgstuff = [hzrgfit['eff_z'], dutyhzrg, hzrgloerr, hzrghierr]
@@ -481,10 +521,10 @@ def duty_cycle():
 
     lensfit = read_pickle('results/lensfits/hzrg.pickle')
 
-    dutylens = lumfunc.occupation_zrange(lensfit['Mmin'], (1., 2.), fluxcut=fluxcuthi, fluxmax=fluxmax, lftype='agn')
-    lensloerr = dutylens - lumfunc.occupation_zrange(lensfit['Mmin'] - lensfit['sigMmin'], (1., 3.),
+    dutylens = lumfunc.occupation_fluxlim_zrange(lensfit['Mmin'], (1., 2.), fluxcut=fluxcuthi, fluxmax=fluxmax, lftype='agn')
+    lensloerr = dutylens - lumfunc.occupation_fluxlim_zrange(lensfit['Mmin'] - lensfit['sigMmin'], (1., 3.),
                                                      fluxcut=fluxcuthi, fluxmax=fluxmax, lftype='agn')
-    lenshierr = lumfunc.occupation_zrange(lensfit['Mmin'] + lensfit['sigMmin'], (1., 3.),
+    lenshierr = lumfunc.occupation_fluxlim_zrange(lensfit['Mmin'] + lensfit['sigMmin'], (1., 3.),
                                           fluxcut=fluxcuthi, fluxmax=fluxmax, lftype='agn') - dutylens
 
     lensstuff = [lensfit['eff_z'], dutylens, lensloerr, lenshierr]
@@ -503,11 +543,11 @@ def duty_cycle():
 
     duty, loerr, hierr = [], [], []
     for j in range(len(fits)):
-        fduty = lumfunc.occupation_zrange(logminmass=fits[j]['Mxmin'], zrange=(qsozrange[j], qsozrange[j+1]),
+        fduty = lumfunc.occupation_fluxlim_zrange(logminmass=fits[j]['Mxmin'], zrange=(qsozrange[j], qsozrange[j+1]),
                                           fluxcut=fluxcuthi, fluxmax=1000.)
         duty.append(fduty)
-        loerr.append(fduty-lumfunc.occupation_zrange(zrange=(qsozrange[j], qsozrange[j+1]), logminmass=fits[j]['Mxmin'] - fits[j]['sigMxmin'], fluxcut=fluxcuthi, fluxmax=fluxmax))
-        hierr.append(lumfunc.occupation_zrange(zrange=(qsozrange[j], qsozrange[j + 1]), logminmass=fits[j]['Mxmin'] + fits[j]['sigMxmin'],
+        loerr.append(fduty-lumfunc.occupation_fluxlim_zrange(zrange=(qsozrange[j], qsozrange[j+1]), logminmass=fits[j]['Mxmin'] - fits[j]['sigMxmin'], fluxcut=fluxcuthi, fluxmax=fluxmax))
+        hierr.append(lumfunc.occupation_fluxlim_zrange(zrange=(qsozrange[j], qsozrange[j + 1]), logminmass=fits[j]['Mxmin'] + fits[j]['sigMxmin'],
                                                  fluxcut=fluxcuthi, fluxmax=1000.)-fduty)
 
     results.dutycycle(lzrgstuff, izrgstuff, hzrgstuff, lensstuff, z_centers, duty, loerr, hierr)

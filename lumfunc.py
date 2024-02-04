@@ -19,6 +19,13 @@ zcenters = np.array([1.25, 1.75, 2.25])
 
 
 def integrate_lf_data(l_grid, logl_tab, log_rho):
+    """
+    Integrate a luminosity function
+    :param l_grid:
+    :param logl_tab:
+    :param log_rho:
+    :return:
+    """
     # fill -infinity for right extrapolation, 10**-inf = 0
     logrho_interp = np.interp(l_grid, np.array(logl_tab), np.array(log_rho), right=-np.inf)
     return np.trapz(10**logrho_interp, x=l_grid)
@@ -65,9 +72,26 @@ def interp_density_brighter_than_lum(z, lcut, lmax=29, lftype='agn'):
     return 10 ** interp1d(zcenters, np.log10(dens), fill_value='extrapolate')(z)
     #return 10 ** np.interp(z, zcenters, np.log10(dens))
 
+def lf_lumbounds_dndz(dndz, lmin, lmax=29, lftype='agn'):
+    """
+    Integrate luminosity function between two luminosity bounds, then integrate over redshift distribution
+    :param dndz:
+    :param lmin:
+    :param lmax:
+    :param lftype:
+    :return:
+    """
+    dndz = redshift_helper.norm_z_dist(dndz)
+    zspace = dndz[0]
+    densities = []
+    for j in range(len(zspace)):
+        densities.append(interp_density_brighter_than_lum(zspace[j], lmin, lmax, lftype=lftype))
+    return np.trapz(np.array(densities)*dndz[1], x=dndz[0])
+
 def lf_fluxlim_dndz(dndz, fluxcut, fluxmax=None, lftype='agn'):
     """
     Integrate the luminosity function of your flux limited sample over the redshift distirbution
+    integrating luminosity function evolving with redshift corresponding to flux limit
     :param dndz:
     :param fluxcut:
     :param fluxmax:
@@ -84,7 +108,17 @@ def lf_fluxlim_dndz(dndz, fluxcut, fluxmax=None, lftype='agn'):
         densities.append(interp_density_brighter_than_lum(zspace[j], l150s[j], l150max[j], lftype=lftype))
     return np.trapz(np.array(densities)*dndz[1], x=dndz[0])
 
-
+def lf_lumbounds_zrange(zrange, lmin, lmax=29, lftype='agn'):
+    """
+    assuming a constant dndz, estimate space density of RGs between luminosity bounds for a given redshift range
+    :param zrange:
+    :param lmin:
+    :param lmax:
+    :param lftype:
+    :return:
+    """
+    dndz = redshift_helper.dndz_from_z_list(np.random.uniform(zrange[0], zrange[1], 10000), 10)
+    return lf_lumbounds_dndz(dndz=dndz, lmin=lmin, lmax=lmax, lftype=lftype)
 
 def lf_fluxlim_zrange(zrange, fluxcut, fluxmax=None, lftype='agn'):
     """
@@ -100,17 +134,28 @@ def lf_fluxlim_zrange(zrange, fluxcut, fluxmax=None, lftype='agn'):
 
 
 
-def occupation_dndz(logminmass, dndz, fluxcut, fluxmax=None, lftype='agn'):
+def occupation_fluxlim_dndz(logminmass, dndz, fluxcut, fluxmax=None, lftype='agn'):
+
     galdens = lf_fluxlim_dndz(dndz, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
     halodens = luminosityfunction.int_hmf_z(dndz, logminmass=logminmass)
     return galdens / halodens
 
-def occupation_zrange(logminmass, zrange, fluxcut, fluxmax=None, lftype='agn'):
+def occupation_fluxlim_zrange(logminmass, zrange, fluxcut, fluxmax=None, lftype='agn'):
     galdens = lf_fluxlim_zrange(zrange=zrange, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
     halodens = luminosityfunction.hmf_zrange(zrange, logminmass)
     return galdens / halodens
 
 
+def occupation_lumbound_dndz(logminmass, dndz, lmin, lmax=29, lftype='agn'):
+
+    galdens = lf_lumbounds_dndz(dndz, lmin, lmax=lmax, lftype=lftype)
+    halodens = luminosityfunction.int_hmf_z(dndz, logminmass=logminmass)
+    return galdens / halodens
+
+def occupation_lumbound_zrange(logminmass, zrange, lmin, lmax=29, lftype='agn'):
+    galdens = lf_lumbounds_zrange(zrange=zrange, lmin=lmin, lmax=lmax, lftype=lftype)
+    halodens = luminosityfunction.hmf_zrange(zrange, logminmass)
+    return galdens / halodens
 
 #def interp_lf_brighter(z, fluxcut=2.):
 #    dens = density_brighter_than_flux(fluxcut=fluxcut)
@@ -123,10 +168,25 @@ def occupation_frac(logminmass, z):
     return focc
 
 def kinetic_lum_kondapally(flux150, z, fcav=4):
+    """
+    Equation 2 of Kondapally+23 adapted for measured observed frame flux
+    :param flux150:
+    :param z:
+    :param fcav:
+    :return:
+    """
+    # convert to rest frame L(1.4 GHz)
     ghz_lum = fluxutils.luminosity_at_rest_nu(flux150, -0.7, .144, 1.4, z, flux_unit=u.mJy, energy=False)
     return 7e36 * fcav * (ghz_lum / 1e25) ** (0.68)
 
 def kinetic_lum_kondapally_l150(l150, fcav=4):
+    """
+    Equation 2 of Kondapally+23
+    :param l150:
+    :param fcav:
+    :return:
+    """
+    # k correct L(150 MHz) to L(1.4 GHz)
     ghzlum = fluxutils.extrap_flux(10**l150, -0.7, .15, 1.4)
     return 7e36 * fcav * (ghzlum / 1e25) ** (0.68)
 
@@ -161,22 +221,44 @@ def local_heating():
     return newdf
 
 def int_heat(heatfile, lmin, lmax=29):
+    """
+    Integrate heating function between jet luminosity bounds
+    :param heatfile:
+    :param lmin:
+    :param lmax:
+    :return: Volume averaged heating power injected by radio galaxies between luminosity bounds, units are erg/s/(Mpc/h)^3
+    """
+    # ensure sorted
     sortidx = np.argsort(heatfile['lum'])
     lum, heat = heatfile['lum'][sortidx], heatfile['heat'][sortidx]
     lumgrid = np.linspace(lmin, lmax, 100)
     interp_heat = np.interp(lumgrid, lum, heat, right=0.)
     totheat = np.trapz(interp_heat, lumgrid) * 1e7  # erg/s/Mpc^3
+    # add hubble units for natural comparison to Halo mass function
     return hubbleunits.add_h_to_density(totheat)
 
 def interp_heat_above_lum(z, lmin, lmax=29, lftype='agn'):
+    """
+    Integrate heating function above minimum jet luminosity at any given redshift by interpolating
+    :param z:
+    :param lmin:
+    :param lmax:
+    :param lftype:
+    :return:
+    """
+    # z=0.2
     heatlocal = local_heating()
+    # z=0.75
     heat0 = pd.read_csv('results/kondapally_heating/z05_1_%s.csv' % lftype, names=['lum', 'heat'])
+    # z=1.25
     heat1 = pd.read_csv('results/kondapally_heating/z1_15_%s.csv' % lftype, names=['lum', 'heat'])
+    # z=1.75
     heat2 = pd.read_csv('results/kondapally_heating/z15_2_%s.csv' % lftype, names=['lum', 'heat'])
+    # z=2.25
     heat3 = pd.read_csv('results/kondapally_heating/z2_25_%s.csv' % lftype, names=['lum', 'heat'])
     heatfiles = [heatlocal, heat0, heat1, heat2, heat3]
     zs = [0.21, 0.75, 1.25, 1.75, 2.25]
-
+    # interpolate to given z
     totheats = []
     for j in range(len(heatfiles)):
         totheats.append(np.log10(int_heat(heatfiles[j], lmin, lmax)))
@@ -211,18 +293,46 @@ def dens_above_cut_stepfunc_hod(z, hod_logminmass, logmass_integral_bound, sigM=
     mgrid, hod = mgrid[above_bound], hod[above_bound]
     return hubbleunits.add_h_to_density(np.trapz(hod * cosmo.hmf_z(np.log10(mgrid), z), x=np.log(mgrid)))
 
+def dens_above_cut_hodparams(z, hodparams, logmass_integral_bound):
+    """
+    Integrate HOD*HMF above a mass threshold for any given Zheng HOD
+    to get the density of galaxies in halos more massive than logmass_integral_bound
+    :param z:
+    :param hodparams:
+    :param logmass_integral_bound:
+    :return:
+    """
+    from halomodelpy import hod_model
+
+    hod = hod_model.zheng_hod(hodparams, ['M', 'sigM', 'M1', 'alpha'])
+    mgrid = hod['mgrid']
+    hod = hod['hod']
+    above_bound = np.where(np.log10(mgrid) >= logmass_integral_bound)
+    mgrid, hod = mgrid[above_bound], hod[above_bound]
+    return hubbleunits.add_h_to_density(np.trapz(hod * cosmo.hmf_z(np.log10(mgrid), z), x=np.log(mgrid)))
+
 
 def fraction_above_cut_stepfunc_hod(z, hod_logminmass, logmass_integral_bound, sigM=None):
     return dens_above_cut_stepfunc_hod(z, hod_logminmass, logmass_integral_bound, sigM=sigM) / \
            dens_above_cut_stepfunc_hod(z, hod_logminmass, logmass_integral_bound=11., sigM=sigM)
 
-def fraction_above_cut_zrange(zrange, hod_logminmass, logmass_integral_bound, sigM=None):
+def fraction_above_cut_stepfunc_zrange(zrange, hod_logminmass, logmass_integral_bound, sigM=None):
     dndz = redshift_helper.dndz_from_z_list(np.random.uniform(zrange[0], zrange[1], 10000), 10)
     fracs = []
     for z in dndz[0]:
         fracs.append(fraction_above_cut_stepfunc_hod(z, hod_logminmass, logmass_integral_bound, sigM=sigM))
     return np.trapz(np.array(fracs)*dndz[1], x=dndz[0])
 
+def fraction_above_cut_hod(z, hodparams, logmass_integral_bound):
+    return dens_above_cut_hodparams(z, hodparams, logmass_integral_bound) / \
+           dens_above_cut_hodparams(z, hodparams, logmass_integral_bound=11.)
+
+def fraction_above_cut_hod_zrange(zrange, hodparams, logmass_integral_bound):
+    dndz = redshift_helper.dndz_from_z_list(np.random.uniform(zrange[0], zrange[1], 10000), 10)
+    fracs = []
+    for z in dndz[0]:
+        fracs.append(fraction_above_cut_hod(z, hodparams, logmass_integral_bound))
+    return np.trapz(np.array(fracs)*dndz[1], x=dndz[0])
 
 
 
@@ -254,7 +364,6 @@ def heating_fluxlim_zrange(zrange, fluxcut, fluxmax=None, lftype='agn'):
     :return:
     """
     dndz = redshift_helper.dndz_from_z_list(np.random.uniform(zrange[0], zrange[1], 10000), 10)
-
     return heating_fluxlim_dndz(dndz=dndz, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
 
 def heat_per_halo_zrange(zrange, logminmass, fluxcut, fluxmax=None, lftype='agn'):
@@ -269,7 +378,7 @@ def energy_per_halo_zrange(zrange, logminmass_hod, logminmass_cut, fluxcut, flux
     else:
         elapsedtime = (apcosmo.age(zrange[0]) - apcosmo.age(zrange[1])).to('s').value
     heatperhalo_cut = heat_per_halo_zrange(zrange=zrange, logminmass=logminmass_cut, fluxcut=fluxcut, fluxmax=fluxmax, lftype=lftype)
-    frac_above_cut = fraction_above_cut_zrange(zrange=zrange, hod_logminmass=logminmass_hod, logmass_integral_bound=logminmass_cut, sigM=sigM)
+    frac_above_cut = fraction_above_cut_stepfunc_zrange(zrange=zrange, hod_logminmass=logminmass_hod, logmass_integral_bound=logminmass_cut, sigM=sigM)
     return np.log10(dutycycle_cut * frac_above_cut * elapsedtime * heatperhalo_cut)
 
 
@@ -349,9 +458,18 @@ def hod_density_above_m(hodparams, fduty, eff_z, logm_min):
 
 
 def desiqso_hod_dens(z, logminmass=12.):
+    from scipy.signal import savgol_filter
     qsohod = pd.read_csv('results/hod/desi_qso/desi_qso_hod.csv', names=['M', 'hod'])
     sortidx = np.argsort(qsohod['M'])
     m, hod = np.array(qsohod['M'][sortidx]), np.array(qsohod['hod'][sortidx])
+    # smooth with savitsky golay filter above 10^13 Msun where hod is noisy
+    satregion = m >= 1e13
+    cenregion = m < 1e13
+    hodcen = hod[cenregion]
+    hodsat = hod[satregion]
+    hodsat = 10 ** savgol_filter(np.log10(hodsat), 10, 1)
+    hod = np.array(list(hodcen) + list(hodsat))
+
     moremassive = np.where(m>10**logminmass)[0]
     m, hod = m[moremassive], hod[moremassive]
     # integrate hod * hmf

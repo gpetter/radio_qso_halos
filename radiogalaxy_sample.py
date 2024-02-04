@@ -5,6 +5,7 @@ import astropy.units as u
 import sample
 from SkyTools import coordhelper, fluxutils
 import pandas as pd
+import params
 hic = 'firebrick'
 #midc = '#ff7400'
 midc = '#ff4d00'
@@ -118,7 +119,7 @@ def wisediagram_both(w2cut=18., sep=3.):
                     c='grey', ls='dotted', alpha=0.5)
 
         axs[j].set_ylim(-0.5, 2.4)
-        axs[j].plot(np.linspace(10, 17.5, 100), (17 - np.linspace(10, 17.5, 100)) / 4 + 0.15, c=hic, ls='--', alpha=0.8)
+        axs[j].plot(np.linspace(10, w2cut, 100), (17 - np.linspace(10, w2cut, 100)) / 4 + 0.15, c=hic, ls='--', alpha=0.8)
         axs[j].axvline(w2cut, ls='--', c='k', alpha=0.4)
 
         axs[j].set_ylabel(r'W1 $-$ W2 [Vega mag]')
@@ -132,68 +133,57 @@ def wisediagram_both(w2cut=18., sep=3.):
     plt.savefig(plotdir + 'wise_diagram.pdf')
     plt.close('all')
 
-def hostgals(izrgs=False):
-    lotz = sample.hzrg_sample()
+def hostgals():
+    from halomodelpy import params as hmparams
+    pob = hmparams.param_obj()
+    cos = pob.apcosmo
+    lotz = Table.read('catalogs/LoTSS.fits')
 
     bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
     bootes = bootes[np.where(bootes['z_best'] < 4)]
-    bootidx, lotidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (lotz['RA'], lotz['DEC']), 5.,
-                                               symmetric=False)
-    bootes = bootes[bootidx]
+    bootes, lotz = coordhelper.match_coords(bootes, lotz, 3., symmetric=False)
+    bootes = bootes['Overall_class', 'SFR_cons', 'Mass_cons', 'z_best']
+    bootes = hstack((lotz, bootes))
 
     bootes = bootes[np.where((bootes['SFR_cons'] > -3) & (bootes['Mass_cons'] > 0))]
-
-    herg = bootes[np.where(bootes['Overall_class'] == "HERG")]
-    lerg = bootes[np.where(bootes['Overall_class'] == "LERG")]
-    sfg = bootes[np.where(bootes['Overall_class'] == "SFG")]
-    agn = bootes[np.where(bootes['Overall_class'] == "RQAGN")]
-
-    from halomodelpy import params
-    pob = params.param_obj()
-    cos = pob.apcosmo
-    plt.figure(figsize=(8,7))
-
+    plt.figure(figsize=(8, 7))
     s = 15
-    plt.scatter(herg['z_best'], herg['SFR_cons'] - herg['Mass_cons'], s=s, c='none', label='HERG', edgecolors='goldenrod', marker='D')
-    plt.scatter(lerg['z_best'], lerg['SFR_cons'] - lerg['Mass_cons'], s=s, c='none', label='LERG',
-                edgecolors='tomato')
-    plt.scatter(sfg['z_best'], sfg['SFR_cons'] - sfg['Mass_cons'], s=s, c='none', label='SFG', marker='*',
-                edgecolors='cornflowerblue')
-    plt.scatter(agn['z_best'], agn['SFR_cons'] - agn['Mass_cons'], s=s, c='none', label='RQAGN', marker='s',
-                edgecolors='darkgreen')
+    samps = ['lzrg', 'izrg', 'hzrg']
+    labels = ['HERG', 'LERG', 'SFG', 'RQAGN']
+    for j in range(len(samps)):
+        if samps[j] == 'lzrg':
+            tab = sample.lzrg_cut(bootes)
+        elif samps[j] == 'izrg':
+            tab = sample.izrg_cut(bootes)
+        elif samps[j] == 'hzrg':
+            tab = sample.hzrg_cut(bootes)
+        else:
+            tab = None
+        herg = tab[np.where(tab['Overall_class'] == "HERG")]
+        lerg = tab[np.where(tab['Overall_class'] == "LERG")]
+        sfg = tab[np.where(tab['Overall_class'] == "SFG")]
+        agn = tab[np.where(tab['Overall_class'] == "RQAGN")]
+
+
+        if j == 0:
+            label = labels
+        else:
+            label = [None, None, None, None]
+
+
+        plt.scatter(herg['z_best'], herg['SFR_cons'] - herg['Mass_cons'], s=s, c='none', label=label[0],
+                    edgecolors='goldenrod', marker='D')
+        plt.scatter(lerg['z_best'], lerg['SFR_cons'] - lerg['Mass_cons'], s=s, c='none', label=label[1],
+                    edgecolors='tomato')
+        plt.scatter(sfg['z_best'], sfg['SFR_cons'] - sfg['Mass_cons'], s=s, c='none', label=label[2], marker='*',
+                    edgecolors='cornflowerblue')
+        plt.scatter(agn['z_best'], agn['SFR_cons'] - agn['Mass_cons'], s=s, c='none', label=label[3], marker='s',
+                    edgecolors='darkgreen')
     plt.plot(np.linspace(0, 4, 100), np.log10(.2 / cos.age(np.linspace(0, 4, 100)).to('yr').value), c='k', ls='--')
     plt.arrow(3, np.log10(.2 / cos.age(3).to('yr').value), 0, -.2, head_width=.05, color='k')
     plt.text(2.5, -10.6, 'Quenched', fontsize=15)
     plt.ylabel('log sSFR (yr$^{-1}$)')
     plt.xlim(0, 3.5)
-
-
-    if izrgs:
-        lotz = sample.izrg_sample()
-        bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
-        bootes = bootes[np.where(bootes['z_best'] < 4)]
-        bootidx, lotidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (lotz['RA'], lotz['DEC']), 5.,
-                                                   symmetric=False)
-        bootes = bootes[bootidx]
-
-        bootes = bootes[np.where((bootes['SFR_cons'] > -3) & (bootes['Mass_cons'] > 0))]
-
-        herg = bootes[np.where(bootes['Overall_class'] == "HERG")]
-        lerg = bootes[np.where(bootes['Overall_class'] == "LERG")]
-        sfg = bootes[np.where(bootes['Overall_class'] == "SFG")]
-        agn = bootes[np.where(bootes['Overall_class'] == "RQAGN")]
-
-        s = 15
-        plt.scatter(herg['z_best'], herg['SFR_cons'] - herg['Mass_cons'], s=s, c='none',
-                    edgecolors='goldenrod', marker='D', alpha=0.3)
-        plt.scatter(lerg['z_best'], lerg['SFR_cons'] - lerg['Mass_cons'], s=s, c='none', label='IzLERGs',
-                    edgecolors='tomato', alpha=0.3)
-        plt.scatter(sfg['z_best'], sfg['SFR_cons'] - sfg['Mass_cons'], s=s, c='none', marker='*',
-                    edgecolors='cornflowerblue', alpha=0.3)
-        plt.scatter(agn['z_best'], agn['SFR_cons'] - agn['Mass_cons'], s=s, c='none', marker='s',
-                    edgecolors='darkgreen', alpha=0.3)
-
-
 
 
     plt.axvline(1.8, c='grey', ls='dotted', alpha=0.6)
@@ -412,18 +402,20 @@ def lum_redshift(hzrgflux=2., izrgflux=5.,sep=3.):
 
         elif which == 'izrg':
             cat = sample.izrg_cut(lotss)
-            zspace = np.linspace(0.5, 1, 20)
+            zspace = np.linspace(params.izrg_minzphot, params.izrg_maxzphot, 20)
             color = midc
-            limlum = np.log10(
-                fluxutils.luminosity_at_rest_nu(izrgflux * np.ones_like(zspace), -0.7, .144, .15, zspace,
-                                                flux_unit=u.mJy,
-                                                energy=False))
+
+            #limlum = np.log10(
+            #    fluxutils.luminosity_at_rest_nu(izrgflux * np.ones_like(zspace), -0.7, .144, .15, zspace,
+            #                                    flux_unit=u.mJy,
+            #                                    energy=False))
+            limlum = np.ones_like(zspace) * params.lumcut
 
         else:
             cat = sample.lzrg_cut(lotss)
-            zspace = np.linspace(0.25, 0.5, 20)
+            zspace = np.linspace(params.lzrg_minzphot, params.lzrg_maxzphot, 20)
             color = lowc
-            limlum = np.ones_like(zspace) * 25.
+            limlum = np.ones_like(zspace) * params.lumcut
 
         ax.plot(zspace, limlum, c=color, ls='--')
 
