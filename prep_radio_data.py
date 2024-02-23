@@ -62,6 +62,8 @@ def cut_duplicates():
     # https://catalog.unwise.me/catalogs.html
     lotss['W1_uw'] = lotss['mag_w1'] - 2.699
     lotss['W2_uw'] = lotss['mag_w2'] - 3.339
+    lotss['W3'] = lotss['mag_w3'] - 5.174
+    lotss['W4'] = lotss['mag_w4'] - 6.62
 
     #use_cw_w1 = np.where((np.logical_not(np.isfinite(lotss['W1']))) & (lotss['sep_cw'] < 2.5))
     # use CatWISE instead of unWISE when a good match
@@ -75,7 +77,7 @@ def cut_duplicates():
                                                              nu_rest_want=.15, z=lotss['zphot'],
                                                              flux_unit=u.mJy, energy=False))
     lotss['RA', 'DEC', 'Total_flux',
-          'Peak_flux', 'Maj', 'W1_uw', 'W2_uw', 'W1_cw', 'W2_cw',
+          'Peak_flux', 'Maj', 'W1_uw', 'W2_uw', 'W1_cw', 'W2_cw', 'W3', 'W4',
           'zphot', 'L150', 'z_desi', 'Resolved', 'LAS', 'sep_cw'].write('catalogs/LoTSS.fits', overwrite=True)
 
 
@@ -96,7 +98,7 @@ def make_ls_depth_map():
     :return:
     """
     rand = Table.read('../data/randoms/ls/dr8/randoms-inside-dr8-0.31.0-1.fits')
-    rand =  rand[np.where(rand['PSFDEPTH_Z'] > 0)]
+    rand = rand[np.where(rand['PSFDEPTH_Z'] > 0)]
     depths = -2.5*(np.log10(5/np.sqrt(rand['PSFDEPTH_Z']))-9)
     meddepth = healpixhelper.healpix_median_in_pixels(256, (rand['RA'], rand['DEC']), depths)
     hp.write_map('masks/LS_zdepth.fits', meddepth, overwrite=True)

@@ -1,10 +1,14 @@
 import matplotlib.pyplot as plt
 from plottools import aesthetic
 import matplotlib.cm as cm
+import pandas as pd
 from matplotlib.ticker import ScalarFormatter
 import numpy as np
 import pickle
 import os
+
+import params
+
 os.chdir('/home/graysonpetter/ssd/Dartmouth/radio_qso_halos/')
 plotdir = '/home/graysonpetter/Dropbox/radioplots/'
 def read_pickle(filename):
@@ -48,8 +52,8 @@ def halomass(elg=False ,lzrg=True):
     fig, ax = plt.subplots(figsize=(8, 7))
 
     if lzrg:
-        lzrgfit = read_pickle('results/fits/tomo/rg_lowz_fit.pickle')
-        plt.errorbar([lzrgfit['eff_z']], [lzrgfit['Mx']], [lzrgfit['sigMx']], color=lowc, fmt='X', label=r'LzRG $\times$ BOSS')
+        #lzrgfit = read_pickle('results/fits/tomo/rg_lowz_fit.pickle')
+        #plt.errorbar([lzrgfit['eff_z']], [lzrgfit['Mx']], [lzrgfit['sigMx']], color=lowc, fmt='X', label=r'LzRG $\times$ BOSS')
         plt.errorbar([lzrgautofit['eff_z']], [lzrgautofit['M']], [lzrgautofit['sigM']], color=lowc, fmt='o',
                      label=r'LzRG auto')
 
@@ -83,14 +87,17 @@ def halomass(elg=False ,lzrg=True):
 
 
 
-    zranges = [1, 1.5, 2, 3]
-    for j in range(3):
+    zranges = params.eboss_qso_zbins
+    for j in range(len(zranges)-1):
         qsoauto = read_pickle('results/fits/tomo/qso_fit_%s.pickle' % j)
-        plt.fill_between([zranges[j], zranges[j+1]], (qsoauto['M'] - qsoauto['sigM'])*np.ones(2), (qsoauto['M'] + qsoauto['sigM'])*np.ones(2), color=qso_c, edgecolor='none', alpha=0.5)
+        plt.fill_between([zranges[j], zranges[j+1]], (qsoauto['M'] - qsoauto['sigM'])*np.ones(2),
+                         (qsoauto['M'] + qsoauto['sigM'])*np.ones(2), color=qso_c, edgecolor='none', alpha=0.5)
 
 
-    plt.errorbar(hzrgautofit['eff_z'], hzrgautofit['M'], yerr=hzrgautofit['sigM'], color=hic, fmt='o', label='HzRG auto')
-    plt.errorbar(hzrglensfit['eff_z'], hzrglensfit['M'], hzrglensfit['sigM'], markeredgecolor=hic, markerfacecolor='none', ecolor=hic, fmt='o', label='HzRG CMB Lensing')
+    plt.errorbar(hzrgautofit['eff_z'], hzrgautofit['M'],
+                 yerr=hzrgautofit['sigM'], color=hic, fmt='o', label='HzRG auto')
+    plt.errorbar(hzrglensfit['eff_z'], hzrglensfit['M'], hzrglensfit['sigM'],
+                 markeredgecolor=hic, markerfacecolor='none', ecolor=hic, fmt='o', label='HzRG CMB Lensing')
 
     #plt.scatter(1.6, autofit['M'])
     #plt.errorbar(1.6, autofit['M'], autofit['sigM'], ecolor='k', fmt='none')
@@ -357,7 +364,7 @@ def autocorrs(samples=('lzrg', 'izrg', 'hzrg'), hod=True, showlens=True):
 
 
     fig, axs = plt.subplots(naxes, 1, figsize=(8, naxes*7), sharex=True)
-    plt.xlim(5e-3, 1e0)
+    plt.xlim(3e-3, 1.5)
     plt.xlabel(r'Separation $\theta$ [deg]')
 
     for j in range(naxes):
@@ -399,7 +406,7 @@ def autocorrs(samples=('lzrg', 'izrg', 'hzrg'), hod=True, showlens=True):
 
 
         if hod:
-            modthetas = np.logspace(-2.5, 0., 100)
+            modthetas = np.logspace(-3, 0.25, 100)
             from halomodelpy import hm_calcs, mcmc
             dndz = read_pickle('results/dndz/%s.pickle' % samp)
             chain = read_pickle('results/hod/%s.pickle' % samp)['chain']
@@ -455,7 +462,7 @@ def corners(smooth=1, fsats=True):
 def hods():
     from halomodelpy import hod_model
     traces = False
-    samps = ['lzrg', 'izrg', 'hzrg']
+    samps = ['hzrg']
 
     if traces:
         fig, (ax, ax2) = plt.subplots(nrows=2, ncols=1, figsize=(8, 14), sharex=True)
@@ -490,21 +497,20 @@ def hods():
         plt.xlim(12, 14.5)
         plt.xlabel(r'log$(\mathrm{Halo \ mass} \ [h^{-1} M_{\odot}])$')
         for k, samp in enumerate(samps):
-            chain = read_pickle('results/hod/%s.pickle' % samp)['chain']
-            hod_arr = []
-            mgrid = hod_model.zheng_hod(chain[0], ['M', 'sigM', 'M1', 'alpha'])['mgrid']
-            for j in range(len(chain)):
-                paramset = list(chain[j])
-                hod_arr.append(np.log10(hod_model.zheng_hod(paramset, ['M', 'sigM', 'M1', 'alpha'])['hod']))
-            hod_arr = np.array(hod_arr)
-            upbounds, lobounds = [], []
-            for j in range(len(mgrid)):
-                upbounds.append(10**np.percentile(hod_arr[:, j], 84))
-                lobounds.append(10**np.percentile(hod_arr[:, j], 16))
+            hodpickle = read_pickle('results/hod/%s.pickle' % samp)
+            lobounds, upbounds = hodpickle['hod_lo'], hodpickle['hod_hi']
+            mgrid = hodpickle['mgrid']
+
             plt.fill_between(mgrid, lobounds, upbounds, color=color_dict[samp], alpha=0.2)
             plt.yscale('log')
             plt.ylim(1e-1, 5e1)
             plt.ylabel('Number per halo')
+    qsohod = pd.read_csv('results/hod/desi_qso/desi_qso_hod.csv', names=['M', 'hod'])
+    sortidx = np.argsort(qsohod['M'])
+    m, hod = np.array(qsohod['M'][sortidx]), np.array(qsohod['hod'][sortidx])
+
+    plt.plot(np.log10(m), hod/np.max(hod), c=qso_c, alpha=0.5)
+
 
 
     plt.savefig(plotdir + 'hods.pdf')
@@ -512,10 +518,10 @@ def hods():
 
 
 
-def dutycycle(lzrgresult, izrgresult, hzrgresult, lensresult, zcenters, duty, loerr, hierr):
+def dutycycle(lzrgresult, izrgresult, hzrgresult):
     fig, ax = plt.subplots(figsize=(8,7))
 
-    plt.errorbar(zcenters, duty, yerr=[loerr, hierr], color=hic, fmt='X')
+    #plt.errorbar(zcenters, duty, yerr=[loerr, hierr], color=hic, fmt='X')
     plt.yscale('log')
     plt.ylim(1e-3, 3)
     plt.xlim(0, 2.75)
@@ -523,8 +529,8 @@ def dutycycle(lzrgresult, izrgresult, hzrgresult, lensresult, zcenters, duty, lo
     plt.errorbar([izrgresult[0]], [izrgresult[1]], yerr=[[izrgresult[2]], [izrgresult[3]]], color=midc, fmt='o')
     plt.errorbar([hzrgresult[0]], [hzrgresult[1]], yerr=[[hzrgresult[2]], [hzrgresult[3]]], color=hic, fmt='o')
 
-    plt.errorbar([lensresult[0]], [lensresult[1]], yerr=[[lensresult[2]], [lensresult[3]]],
-                 markeredgecolor=hic, markerfacecolor='none', ecolor=hic, fmt='o')
+    #plt.errorbar([lensresult[0]], [lensresult[1]], yerr=[[lensresult[2]], [lensresult[3]]],
+    #             markeredgecolor=hic, markerfacecolor='none', ecolor=hic, fmt='o')
 
     laurent=True
     if laurent:
@@ -672,8 +678,8 @@ def avghalopower(lzrgs, izrgs, hzrgs, qsowindinfo):
 
 
     # plt.axhline(lumfunc.lx_energy(44, (1., 1.5)), label=r'$\Delta t \times L_x=44$')
-    zs, e, elo, ehi = hzrgs
-    ax.errorbar(zs, e, yerr=[elo, ehi], color='firebrick', fmt='X')
+    #zs, e, elo, ehi = hzrgs
+    #ax.errorbar(zs, e, yerr=[elo, ehi], color='firebrick', fmt='X')
     ax.set_ylabel(r'log$\langle$Kinetic power per halo [erg/s]$\rangle$')
     ax.set_xlabel('Redshift')
 
@@ -688,18 +694,21 @@ def avghalopower(lzrgs, izrgs, hzrgs, qsowindinfo):
     plt.savefig(plotdir + 'halopower.pdf', dpi=300)
     plt.close('all')
 
-def halopower_ratios(mcut_grid, lzrgs, izrgs):
+def halopower_ratios(mcut_grid, lzrgs, izrgs, hzrgs):
     fig, ax = plt.subplots(figsize=(8, 7))
 
     ax.fill_between(mcut_grid, lzrgs[:, 0], lzrgs[:, 1], color=lowc, alpha=0.2, edgecolor='none', label=r'$0.25 < z < 0.5$')
     ax.fill_between(mcut_grid, izrgs[:, 0], izrgs[:, 1], color=midc, alpha=0.2, edgecolor='none', label=r'$0.5 < z < 1$')
+    ax.fill_between(mcut_grid, hzrgs[:, 0], hzrgs[:, 1], color=hic, alpha=0.2, edgecolor='none',
+                    label=r'$1 < z < 2.5$')
 
     ax.axhline(1., c='k', ls='--')
-    ax.set_xlabel(r'log(Minimum halo mass $[h^{-1} M_{\odot}]$)')
+    ax.set_xlabel(r'log(Halo mass $[h^{-1} M_{\odot}]$)')
     ax.set_yscale('log')
-    ax.set_ylabel(r'$\langle$ Jet power $\rangle$ /  $\langle$ Wind power $\rangle$')
+    ax.set_ylabel(r'$\langle$ Jet-heating power $\rangle$ /  $\langle$ QSO wind-heating power $\rangle$')
+    ax.set_ylim(1e-3, 5e3)
 
-    ax.legend()
+    ax.legend(loc='lower right')
     plt.savefig(plotdir + 'halopower_ratio.pdf', dpi=300)
     plt.close('all')
 

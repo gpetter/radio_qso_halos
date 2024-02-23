@@ -18,10 +18,10 @@ import params
 #prep_radio_data.make_bitmask_map()
 
 # 2. Create redshift samples, plot
-#radiogalaxy_sample.wisediagram_both()
+radiogalaxy_sample.wisediagram()
 radiogalaxy_sample.both_redshift_dist()
 radiogalaxy_sample.lum_redshift()
-radiogalaxy_sample.hostgals()
+#radiogalaxy_sample.hostgals()
 #print('HzRG mag bias is %s pm %s' % sample.estimate_rg_magbias('hzrg'))
 #print('IzRG mag bias is %s pm %s' % sample.estimate_rg_magbias('izrg'))
 
@@ -29,25 +29,25 @@ radiogalaxy_sample.hostgals()
 #sample.maketomographer_files(128, 'lo')
 
 # 4. Cross correlate LzRGs with BOSS galaxies
-measurements.lzrg_xcorr(params.linscales)
-measurements.autocorr_lzrgs(params.hodscales)
+#measurements.lzrg_xcorr(params.linscales)
+#measurements.autocorr_lzrgs(params.hodscales)
 #measurements.lumtrend(params.linscales, nzbins=15)
 
 # 5. Autoclustering of IzRGs
-measurements.autocorr_izrgs(params.hodscales)
+#measurements.autocorr_izrgs(params.hodscales)
 
 # 6. Autoclustering of HzRGs, CMB lensing of HzRGs, and cross-correlations with eBOSS quasars
-#measurements.autocorr_hzrgs(params.hodscales)
-#measurements.lens_hzrg(lensscales)
-#measurements.hzrg_xcorr(rpscales=linscales)
+measurements.autocorr_hzrgs(params.hodscales)
+#measurements.lens_hzrg(params.lensscales)
+#measurements.hzrg_xcorr(rpscales=params.linscales)
 
 # 7. Fit autocorrelations with HOD
 #measurements.hodfit('lzrg', niter=1000, freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 1., 13.5, .8])
 #measurements.hodfit('izrg', niter=1000, freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 1., 13.5, .8])
-#measurements.hodfit('hzrg', niter=1000, freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 0.5, 14, .8])
+#measurements.hodfit('hzrg', niter=100, freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 0.5, 14, .8])
 
 
 # 8. Determine duty cycle and energy injection
 #measurements.duty_cycle()
-#measurements.halopower()
+#measurements.halopower(mcut=12.)
 #measurements.halopower_ratio()

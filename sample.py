@@ -88,8 +88,8 @@ def in_ls_dr8(ra, dec):
 			((ra < 150.66) & (ra > 150) & (dec < 33) & (dec > 32.6)) | \
 			((ra < 150.16) & (ra > 149.5) & (dec < 33.75) & (dec > 33.1)) | \
 			((ra < 166) & (ra > 165.5) & (dec < 61.8) & (dec > 61.5))
-	infoot = (northfoot.contains(ra * u.deg, dec * u.deg) | southfoot.contains(ra * u.deg,
-																			   dec * u.deg)) & np.logical_not(inbad)
+	infoot = (northfoot.contains(ra * u.deg, dec * u.deg) |
+							southfoot.contains(ra * u.deg, dec * u.deg)) & np.logical_not(inbad)
 	goodls = hp.read_map('masks/good_LS.fits')
 	zdepth = hp.read_map('masks/LS_zdepth.fits')
 	bitmaskmap = hp.read_map('masks/maskbits_map.fits')
@@ -191,12 +191,13 @@ def cat_in_goodclustering_area(cat):
 	rand = cat_in_goodclustering_area(rand)
 	return rand"""
 
-def lotss_randoms():
+def lotss_randoms(nrand):
 	rand = Table.read('../data/randoms/ls/dr8/randoms-inside-dr8-0.31.0-1.fits')
-	rand = rand[np.random.choice(len(rand), int(3e6), replace=False)]
-	rand = rand[np.where((rand['MASKBITS'] == 0) & (rand['WISEMASK_W1'] == 0) & (rand['WISEMASK_W2'] == 0))]
+	#rand = rand[np.where((rand['MASKBITS'] == 0) & (rand['WISEMASK_W1'] == 0) & (rand['WISEMASK_W2'] == 0))]
+	rand = rand[np.random.choice(len(rand), int(nrand * 10), replace=False)]
 	rand = cat_in_goodclustering_area(rand)
 	rand['weight'] = np.ones(len(rand))
+	rand = rand[np.random.choice(len(rand), int(nrand), replace=False)]
 	rand = rand['RA', 'DEC', 'weight']
 	return rand
 
@@ -375,14 +376,17 @@ def supercede_catwise(lotss, supercede_sep=2.5, w2mag=10):
 	lotss['W2'][supercede_idx] = lotss['W2_cw'][supercede_idx]
 	return lotss
 
-def hzrg_cut(lotss):
-
+def hzrg_cut(lotss, fcut=None):
+	lotss = Table(lotss, copy=True)
+	if fcut is None:
+		fcut = params.hzrg_fluxcut
 	# cut local zphot detections
 	lotss = lotss[np.where((lotss['zphot'] > params.hzrg_minzphot) | (np.logical_not(np.isfinite(lotss['zphot']))))]
 
 	lotss = lotss[np.where(lotss['Total_flux'] < params.hzrg_maxflux)]
 	lotss = lotss[np.where(lotss['LAS'] < params.lasmax)]
 	lotss = supercede_catwise(lotss, supercede_sep=params.supercede_cw_sep)
+	#lotss = lotss[np.where((lotss['L150'] > params.lumcut) | (np.logical_not(np.isfinite(lotss['zphot']))))]
 
 
 	if params.w2faint is not None:
@@ -400,17 +404,18 @@ def hzrg_cut(lotss):
 
 	lotss['r75'] = np.array(fluxutils.r75_assef(lotss['W1'], lotss['W2']), dtype=int)
 	lotss['r90'] = np.array(fluxutils.r90_assef(lotss['W1'], lotss['W2']), dtype=int)
-	lotss = lotss[lotss['Total_flux'] > params.hzrg_fluxcut]
+	lotss = lotss[lotss['Total_flux'] > fcut]
 	lotss['weight'] = np.ones(len(lotss))
 	return lotss
 
-def hzrg_sample():
+def hzrg_sample(fcut=None):
 	lotss = Table.read('catalogs/LoTSS.fits')
 	lotss = cat_in_goodclustering_area(lotss)
-	lotss = hzrg_cut(lotss)
+	lotss = hzrg_cut(lotss, fcut=fcut)
 	return lotss
 
 def izrg_cut(lotss, lummin=None, lummax=np.inf, minz=None, maxz=None):
+	lotss = Table(lotss, copy=True)
 	lotss = lotss[np.where(lotss['Total_flux'] < params.izrg_maxflux)]
 	#lotss = lotss[np.where(lotss['LAS'] < params.lasmax)]
 	lotss['weight'] = np.ones(len(lotss))
@@ -424,10 +429,16 @@ def izrg_cut(lotss, lummin=None, lummax=np.inf, minz=None, maxz=None):
 
 	lotss = supercede_catwise(lotss, supercede_sep=params.supercede_cw_sep)
 
-	lotss = lotss[np.where((lotss['W2'] < params.w2faint))]
+	#lotss = lotss[np.where((lotss['W2'] < params.w2faint))]
 
-	lotss = lotss[np.where((lotss['W1'] - lotss['W2']) < params.hzrg_cut_eqn(lotss['W2']))]
-	lotss = lotss[np.where((lotss['W1'] - lotss['W2']) < ((lotss['W2'] - 17) / 3. + 0.75))]
+	nothzrg = (lotss['W1'] - lotss['W2']) < params.hzrg_cut_eqn(lotss['W2'])
+	#notlzrg = (lotss['W1'] - lotss['W2']) < ((lotss['W2'] - 17) / 3. + 0.75)
+	isr90qso = fluxutils.r90_assef(lotss['W1'], lotss['W2'])
+
+	lotss = lotss[np.where(
+		(nothzrg))]
+	#|
+	#())]
 
 	if params.izrg_minzphot is not None:
 		lotss = lotss[np.where(((lotss['zphot'] > minz) & (lotss['zphot'] < maxz)))]
@@ -446,7 +457,9 @@ def izrg_sample(lummin=None, lummax=np.inf, minz=None, maxz=None):
 	return izrg_cut(lotss, lummin=lummin, lummax=lummax, minz=minz, maxz=maxz)
 
 def lzrg_cut(lotss):
-	lotss = lotss[np.where(lotss['Total_flux'] < params.lzrg_maxflux)]
+	lotss = Table(lotss, copy=True)
+	if params.lzrg_maxflux is not None:
+		lotss = lotss[np.where(lotss['Total_flux'] < params.lzrg_maxflux)]
 	#lotss = lotss[np.where(lotss['LAS'] < params.lasmax)]
 
 	lotss = supercede_catwise(lotss, supercede_sep=params.supercede_cw_sep)
@@ -455,7 +468,7 @@ def lzrg_cut(lotss):
 	if params.lzrg_minzphot is not None:
 		lotss = lotss[np.where((lotss['zphot'] > params.lzrg_minzphot) & (lotss['zphot'] < params.lzrg_maxzphot))]
 		# still throw out HzRGs
-		lotss = lotss[np.where((lotss['W1'] - lotss['W2']) < params.hzrg_cut_eqn(lotss['W2']))]
+		#lotss = lotss[np.where((lotss['W1'] - lotss['W2']) < params.hzrg_cut_eqn(lotss['W2']))]
 		lotss = lotss[np.where(lotss['L150'] > params.lumcut)]
 
 	# otherwise use WISE color cuts to try to select 0.25 < z < 0.5 radio galaxies
@@ -521,11 +534,14 @@ def match2bootes(cat, sep, stack=False):
 		bootes = hstack([cat, bootes])
 	return bootes
 
-def match2combined(cat, sep):
+def match2combined(cat, sep, stack=False):
 	comb = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/combined.fits')
 	idx, catidx = coordhelper.match_coords((comb['RA'], comb['DEC']), (cat['RA'], cat['DEC']),
 											   max_sep=sep, symmetric=False)
 	comb = comb[idx]
+	if stack:
+		cat = cat[catidx]
+		comb = hstack([cat, comb])
 	return comb
 
 
@@ -668,7 +684,7 @@ def tomographer_dndz(which):
 
 def estimate_rg_magbias(whichsamp, magdiff=0.1, nboots=100):
 	if whichsamp == 'hzrg':
-		lotss = hzrg_sample(fcut=0.75*2.)
+		lotss = hzrg_sample(fcut=(0.75*params.hzrg_fluxcut))
 		fluxcut=2.
 
 	elif whichsamp == 'izrg':
