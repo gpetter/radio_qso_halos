@@ -40,7 +40,7 @@ def wisediagram():
     ax.text(0.05, 0.93, r'$S_{150 \ \mathrm{MHz}} >$ %s mJy' % (params.hzrg_fluxcut), transform=ax.transAxes,
             fontsize=20)
     #ax.text(16.3, 1.8, 'HzRGs', fontsize=20, color=hic)
-    ax.text(16.65, 1.7, '$z>1$', fontsize=20, color=hic)
+    ax.text(14.5, 1.7, '$z>1$', fontsize=20, color=hic)
     ax.text(params.w2faint + .15, 1.6, r'W2 limit', rotation=90, fontsize=12)
     ax.text(16.3, 1.9, 'R90 AGN', fontsize=10, rotation=75, color='grey')
     ax.text(11.5, 0.4, r'$z < 0.5$', color=lowc, fontsize=20)
@@ -165,91 +165,37 @@ def hostgals():
 
 
 
-def hzrg_redshift_dist(nbins=20, ndraws=100):
-    rgs = sample.hzrg_sample(2)
-    zrange = (0.1, 4)
 
-    f, (ax0, ax1) = plt.subplots(figsize=(8,9), nrows=2, ncols=1, gridspec_kw={'height_ratios': [1, 5]}, sharex=True)
+def both_redshift_dist(ndraws=100, bootesonly=False, showspec=False):
 
-    #zs = sample.redshift_dist(rgs, 5.)
-    bootes = sample.match2bootes(rgs, sep=3)
-    specbootes = bootes[np.where(bootes['f_zbest'] == 1)]
-    #spl_dndz = sample.spline_dndz(rgs, 5., zrange=zrange, n_newzs=100, spline_k=5, smooth=0.03)
-
-    #plt.hist(zs, density=True, histtype='step', range=zrange, bins=15)
-    #plt.plot(spl_dndz[0], spl_dndz[1], c='k', ls='--')
-    finalzs = sample.treat_dndz_pdf(bootes, ndraws)
-    hist, foo = np.histogram(finalzs, bins=nbins, range=zrange)
-    normhist, foo = np.histogram(finalzs, bins=nbins, range=zrange, density=True)
-    weight = normhist[0]/hist[0]
-    nphot2nspec = len(bootes) / len(specbootes)
-    ax1.hist(finalzs, range=zrange, bins=nbins, weights=weight*np.ones_like(finalzs), histtype='step', edgecolor='k')
-    ax1.hist(specbootes['z_best'], range=zrange, bins=nbins, histtype='step', hatch='////',
-             weights=ndraws*weight*np.ones(len(specbootes)), edgecolor='firebrick', alpha=0.3)
-    ax1.text(1, 0.03, 'Spectroscopic', color=hic, fontsize=25)
-    plt.xlabel('Redshift')
-    plt.ylabel('Redshift distribution')
-
-    zs, tomo_dndz, tomo_err = sample.tomographer_dndz()
-    ax0.scatter(zs, tomo_dndz, c='k')
-    ax0.errorbar(zs, tomo_dndz, yerr=tomo_err, ecolor='k', fmt='none')
-    ax0.text(2.3, 0.8, r'Tomographer ($b \propto 1/D(z))$', fontsize=15)
-    #ax0.hist(finalzs, range=zrange, bins=nbins, weights=weight*finalweights, histtype='step', edgecolor='k')
-    #ax0.axhline(0, ls='--', c='k')
-
-    plt.subplots_adjust(hspace=0)
-    plt.savefig(plotdir + 'hzrg_dndz.pdf')
-    plt.close('all')
-
-def izrg_redshift_dist(nbins=5, ndraws=100):
-    rgs = sample.izrg_sample()
-    zrange = (0.3, 1.2)
-
-    f, ax = plt.subplots(figsize=(8,7))
-
-    bootes = sample.match2bootes(rgs, sep=3)
-    specbootes = bootes[np.where(bootes['f_zbest'] == 1)]
-
-    finalzs = sample.treat_dndz_pdf(bootes, ndraws)
-    hist, foo = np.histogram(finalzs, bins=nbins, range=zrange)
-    normhist, foo = np.histogram(finalzs, bins=nbins, range=zrange, density=True)
-    weight = normhist[0]/hist[0]
-    ax.hist(finalzs, range=zrange, bins=nbins, weights=weight*np.ones_like(finalzs), histtype='step', edgecolor='k')
-    ax.hist(specbootes['z_best'], range=zrange, bins=nbins, histtype='step', hatch='////',
-             weights=ndraws*weight*np.ones(len(specbootes)), edgecolor='firebrick', alpha=0.3)
-    ax.text(0.5, 0.05, 'Spectroscopic', color=midc, fontsize=25)
-    plt.xlabel('Redshift')
-    plt.ylabel('Redshift distribution')
-
-    plt.subplots_adjust(hspace=0)
-    plt.savefig(plotdir + 'izrg_dndz.pdf')
-    plt.close('all')
-
-def both_redshift_dist(nbins=30, ndraws=100, bootesonly=False, showspec=False):
-    zrange = (0.1, 4)
-    norm_unity = True
+    norm_unity = False
 
     hzrgs = sample.hzrg_sample()
-    hifinalzs = sample.treat_dndz_pdf(hzrgs, ndraws, bootesonly=bootesonly)
+    hifinalzs = sample.treat_dndz_pdf(hzrgs)
+    #hifinalzs = sample.redshift_dist(hzrgs, 2., bootesonly=bootesonly)
 
 
     izrgs = sample.izrg_sample()
-    midfinalzs = sample.treat_dndz_pdf(izrgs, ndraws, bootesonly=bootesonly)
+    midfinalzs = sample.redshift_dist(izrgs, 2., bootesonly=False)
 
     lzrg = sample.lzrg_sample()
-    lowzs = sample.redshift_dist(lzrg, 3., bootesonly=False)
+    lowzs = sample.redshift_dist(lzrg, 2., bootesonly=False)
 
     f, (ax0, ax1) = plt.subplots(figsize=(8,9), nrows=2, ncols=1, gridspec_kw={'height_ratios': [1, 5]}, sharex=True)
-    plt.xlim(-0.1, 3.75)
+    plt.xlim(-0.1, 3.25)
 
 
 
-    hist, foo = np.histogram(hifinalzs, bins=nbins, range=zrange)
-    normhist, foo = np.histogram(hifinalzs, bins=nbins, range=zrange, density=True)
+    hist, foo = np.histogram(hifinalzs, bins=params.nzbins, range=params.zbin_range)
+    normhist, foo = np.histogram(hifinalzs, bins=params.nzbins, range=params.zbin_range, density=True)
+    norm = np.nanmean(hist/normhist)
+
     if norm_unity:
         weight = 1 / np.max(hist)
     else:
-        weight = normhist[0]/hist[0]
+        hz = sample.redshift_dist(hzrgs, 2., bootesonly=bootesonly)
+        weight = np.ones_like(hifinalzs) * len(hz)/len(hifinalzs)
+        #weight = np.ones_like(hifinalzs)
 
     if showspec:
         hibootes = sample.match2bootes(hzrgs, sep=3)
@@ -259,12 +205,15 @@ def both_redshift_dist(nbins=30, ndraws=100, bootesonly=False, showspec=False):
         midbootes = sample.match2bootes(izrgs, sep=3)
         midspecbootes = midbootes[np.where(midbootes['f_zbest'] == 1)]
 
-        ax1.hist(hispecbootes['z_best'], range=zrange, bins=nbins, histtype='step', hatch='////',
+        ax1.hist(hispecbootes['z_best'], range=params.zbin_range, bins=params.nzbins, histtype='step', hatch='////',
                  weights=ndraws * weight * np.ones(len(hispecbootes)), edgecolor=hic, alpha=0.3)
         ax1.text(1.2, 0.03, 'Spectroscopic', color=hic, fontsize=25)
 
-    ax1.hist(hifinalzs, range=zrange, bins=nbins, weights=weight*np.ones_like(hifinalzs),
-             histtype='step', edgecolor=hic)
+    ax1.hist(hifinalzs, range=params.zbin_range, bins=params.nzbins, weights=weight*np.ones_like(hifinalzs),
+              color=hic, alpha=0.2)
+    from halomodelpy import redshift_helper
+    savdndz = sample.savgol_dndz(redshift_helper.dndz_from_z_list(hifinalzs, params.nzbins, params.zbin_range))
+    ax1.plot(savdndz[0], savdndz[1]*norm*weight[0], color=hic, ls='dotted')
 
 
 
@@ -277,7 +226,7 @@ def both_redshift_dist(nbins=30, ndraws=100, bootesonly=False, showspec=False):
     #ax0.errorbar(zs, tomo_dndz, yerr=tomo_err, color=hic, fmt='o')
     ax0.fill_between(zs, tomo_dndz - tomo_err, tomo_dndz + tomo_err, color=hic, alpha=0.3, edgecolor='none')
 
-    ax0.text(2.1, 0.8, r'Tomographer ($b \propto 1/D(z))$', fontsize=15)
+
 
     zs, tomo_dndz, tomo_err = sample.tomographer_dndz('mid')
     maxd = np.max(tomo_dndz)
@@ -291,43 +240,48 @@ def both_redshift_dist(nbins=30, ndraws=100, bootesonly=False, showspec=False):
     maxd = np.max(tomo_dndz)
     tomo_dndz, tomo_err = tomo_dndz / maxd, tomo_err / maxd
     # ax0.errorbar(zs, tomo_dndz, yerr=tomo_err, color=midc, fmt='o')
-    ax0.fill_between(zs, tomo_dndz - tomo_err, tomo_dndz + tomo_err, color=lowc, alpha=0.15, edgecolor='none')
+    ax0.fill_between(zs, tomo_dndz - tomo_err, tomo_dndz + tomo_err, color=lowc, alpha=0.3, edgecolor='none')
 
     ax0.axhline(0, color='k', alpha=0.2, ls='dashed')
+    ax0.set_ylim(-0.5, 1.5)
+    ax0.text(2.1, 1., r'Tomographer', fontsize=15)
+    #ax0.text(2.2, 0.8, r'($b \propto 1/D(z))$', fontsize=15)
 
     #ax0.hist(finalzs, range=zrange, bins=nbins, weights=weight*finalweights, histtype='step', edgecolor='k')
     #ax0.axhline(0, ls='--', c='k')
 
-    hist, foo = np.histogram(midfinalzs, bins=nbins, range=zrange)
-    normhist, foo = np.histogram(midfinalzs, bins=nbins, range=zrange, density=True)
+    hist, foo = np.histogram(midfinalzs, bins=params.nzbins, range=params.zbin_range)
+    normhist, foo = np.histogram(midfinalzs, bins=params.nzbins, range=params.zbin_range, density=True)
     normhist = normhist[np.where(normhist > 0)]
     hist = hist[np.where(hist > 0)]
     if norm_unity:
         weight = 1 / np.max(hist)
     else:
-        weight = normhist[0] / hist[0] / (len(hibootes) / len(midbootes))
+        #weight = normhist[0] / hist[0] / (len(hibootes) / len(midbootes))
+        weight = np.ones_like(midfinalzs)
 
 
-    ax1.hist(midfinalzs, range=zrange, bins=nbins, histtype='step',
+    ax1.hist(midfinalzs, range=params.zbin_range, bins=params.nzbins, histtype='step',
              weights=weight * np.ones_like(midfinalzs),
-             ls='dashed', alpha=0.9, edgecolor=midc)
+             ls='dashed', alpha=0.8, edgecolor=midc)
     # ax1.text(0.1, 0.6, 'IzRGs', color='orange', fontsize=20)
 
-    hist, foo = np.histogram(lowzs, bins=nbins, range=zrange)
-    normhist, foo = np.histogram(lowzs, bins=nbins, range=zrange, density=True)
+    hist, foo = np.histogram(lowzs, bins=params.nzbins, range=params.zbin_range)
+    normhist, foo = np.histogram(lowzs, bins=params.nzbins, range=params.zbin_range, density=True)
     if norm_unity:
         weight = 1 / np.max(hist)
     else:
-        weight = normhist[0] / hist[0] / (len(hibootes) / (len(lowzs)/3.))
+        #weight = normhist[0] / hist[0] / (len(hibootes) / (len(lowzs)/3.))
+        weight = np.ones_like(lowzs)
 
-    ax1.text(0.05, 0.6, 'LzRGs', color=lowc, fontsize=20, rotation=90)
-    ax1.text(0.4, 1.05, 'IzRGs', color=midc, fontsize=20)
-    ax1.text(1.6, 0.9, 'HzRGs', color=hic, fontsize=20)
-    ax1.set_ylim(0, 1.15)
+    #ax1.text(0.05, 0.6, 'LzRGs', color=lowc, fontsize=20, rotation=90)
+    #ax1.text(0.4, 1.05, 'IzRGs', color=midc, fontsize=20)
+    #ax1.text(1.6, 0.9, 'HzRGs', color=hic, fontsize=20)
+    #ax1.set_ylim(0, 1.15)
 
-    ax1.hist(lowzs, range=zrange, bins=nbins, histtype='step',
-             weights=weight * np.ones_like(lowzs),
-             ls='dotted', alpha=0.9, edgecolor=lowc)
+    ax1.hist(lowzs, range=params.zbin_range, bins=params.nzbins, histtype='step',
+             weights=weight * np.ones_like(lowzs), hatch='//',
+             alpha=0.8, edgecolor=lowc)
 
 
 
@@ -393,13 +347,13 @@ def lum_redshift(sep=3.):
         sfg = cat[np.where(cat['Overall_class'] == "SFG")]
         agn = cat[np.where(cat['Overall_class'] == "RQAGN")]
 
-        ax.scatter(herg['z_best'], herg['L'], s=s, c='none', label='HERG',
+        ax.scatter(herg['z_best'], herg['L'], s=s, c='none',
+                   edgecolors=color, marker='^')
+        ax.scatter(lerg['z_best'], lerg['L'], s=s, c='none',
                    edgecolors=color, marker='o')
-        ax.scatter(lerg['z_best'], lerg['L'], s=s, c='none', label='LERG',
+        ax.scatter(sfg['z_best'], sfg['L'], s=s, c='none', marker='*',
                    edgecolors=color)
-        ax.scatter(sfg['z_best'], sfg['L'], s=s, c='none', label='SFG', marker='*',
-                   edgecolors=color)
-        ax.scatter(agn['z_best'], agn['L'], s=s, c='none', label='RQAGN',
+        ax.scatter(agn['z_best'], agn['L'], s=s, c='none',
                    edgecolors=color, marker='s')
 
     zbin_plot('hzrg')
@@ -423,6 +377,11 @@ def lum_redshift(sep=3.):
                 color='k', alpha=0.1)
 
     ax.set_ylabel('log($L_{150 \ \mathrm{MHz}}$ [W/Hz])')
+    ax.scatter(10, 0, c='none', edgecolors='k', marker='^', label='HERG')
+    ax.scatter(10, 0, c='none', edgecolors='k', marker='o', label='LERG')
+    ax.scatter(10, 0, c='none', edgecolors='k', marker='s', label='RQAGN')
+    ax.scatter(10, 0, c='none', edgecolors='k', marker='*', label='SFG')
+    ax.legend(fontsize=15)
 
     totcat = Table()
     totcat = vstack((totcat, sample.hzrg_cut(lotss)))
@@ -452,8 +411,10 @@ def lum_redshift(sep=3.):
     ax2.fill_between(zcenters, lergfracs - lergerrs, lergfracs + lergerrs, alpha=0.5, color='green', edgecolor='none')
     ax2.set_ylim(0, 1)
     ax2.set_ylabel("Fraction")
-    ax2.text(0.6, 0.75, 'LERGs', color='green', fontsize=15)
-    ax2.text(1.1, 0.25, 'HERGs', color='lightseagreen', fontsize=15)
+    ax2.text(0.05, 0.75, 'LERGs', color='green', fontsize=15)
+    ax2.text(0.05, 0.15, 'HERGs', color='lightseagreen', fontsize=15)
+
+
 
     plt.subplots_adjust(hspace=0)
     plt.savefig(plotdir + 'lum_z.pdf')

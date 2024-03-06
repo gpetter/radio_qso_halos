@@ -43,19 +43,22 @@ def physical_size(angsizes, zs):
 	phys_sizes = (angsizes * u.arcsec).to(u.rad) * ang_diam_dists
 	return phys_sizes
 
-def stardensmap():
-	pixweight = Table.read('../data/desi_targets/syst_maps/pixweight-1-dark.fits')
-
-	stars = np.empty(hp.nside2npix(256))
-	stars[hp.nest2ring(256, pixweight['HPXPIXEL'])] = pixweight['STARDENS']
-	return stars
+def legacysurvey_mask(syst_label):
+	pixweight = Table.read('/home/graysonpetter/ssd/Dartmouth/data/desi_targets/syst_maps/pixweight-1-dark.fits')
+	systmap = np.empty(hp.nside2npix(256))
+	systmap[hp.nest2ring(256, pixweight['HPXPIXEL'])] = pixweight['%s' % syst_label]
+	if syst_label == 'PSFDEPTH_W2':
+		systmap = 22.5 - 2.5 * np.log10(5 / np.sqrt(systmap)) - 3.339
+	elif (syst_label == 'PSFDEPTH_Z') | (syst_label == 'PSFDEPTH_R') | (syst_label == 'PSFDEPTH_G'):
+		systmap = 22.5 - 2.5 * np.log10(5 / np.sqrt(systmap))
+	return systmap
 
 def in_cmblensingmask(ras, decs):
 	lensmask = hp.read_map('/home/graysonpetter/ssd/Dartmouth/data/lensing_maps/PlanckPR4/derived/1024/mask.fits')
 	return lensmask[hp.ang2pix(nside=hp.npix2nside(len(lensmask)), theta=ras, phi=decs, lonlat=True)] == 1
 
 
-def in_lotss_dr2(ras, decs, galcut=20, northonly=True):
+def in_lotss_dr2(ras, decs, northonly=True):
 	moc = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
 	inmoc = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
 
@@ -63,9 +66,7 @@ def in_lotss_dr2(ras, decs, galcut=20, northonly=True):
 	rms = rmsmap[hp.ang2pix(nside=hp.npix2nside(len(rmsmap)), theta=ras, phi=decs, lonlat=True)]
 	goodrms = rms < 0.2 # mJy
 
-	l, b = coordhelper.equatorial_to_galactic(ras, decs)
-	goodbs = np.abs(b) > galcut
-	good_idxs = inmoc & goodrms & goodbs
+	good_idxs = inmoc & goodrms
 	if northonly:
 		innorth = (ras > 90) & (ras < 290)
 		good_idxs = good_idxs & innorth
@@ -138,14 +139,6 @@ def in_boss(ras, decs):
 def cat_in_boss(cat):
 	return cat[in_boss(cat['RA'], cat['DEC'])]
 
-def in_desi_elg_foot(ras, decs):
-	elgrand = Table.read('/home/graysonpetter/ssd/Dartmouth/data/lss/desiELG_edr/desiELG_edr_randoms.fits')
-	dens = myhp.healpix_density_map(elgrand['RA'], elgrand['DEC'], nsides=32)
-	dens[np.where(dens > 0)] = 1
-	return myhp.inmask((ras, decs), dens, return_bool=True)
-
-def cat_in_desi_elg(cat):
-	return cat[in_desi_elg_foot(cat['RA'], cat['DEC'])]
 
 def in_vlass_epoch2(ras, decs):
 	moc1 = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/footprints/VLASS/vlass_2.1.moc.fits')
@@ -156,28 +149,46 @@ def in_vlass_epoch2(ras, decs):
 	return good_idxs
 
 def in_goodwise(ras, decs):
-	pixweight = Table.read('/home/graysonpetter/ssd/Dartmouth/data/desi_targets/syst_maps/pixweight-1-dark.fits')
-	import healpy as hp
-	w2depth = np.empty(hp.nside2npix(256))
-	w2depth[hp.nest2ring(256, pixweight['HPXPIXEL'])] = pixweight['PSFDEPTH_W2']
-	w2depth = 22.5 - 2.5 * np.log10(5 / np.sqrt(w2depth)) - 3.339
-	w2depth[np.where(np.logical_not(np.isfinite(w2depth)))] = 100.
-	depths = w2depth[hp.ang2pix(256, ras, decs, lonlat=True)]
-
-	lams, betas = coordhelper.equatorial_to_ecliptic(ras, decs)
-
-	return (depths > 17.3) & (betas < 75)
+	w2depth = hp.read_map('masks/wisedepth.fits')
+	depths = w2depth[hp.ang2pix(hp.npix2nside(len(w2depth)), ras, decs, lonlat=True)]
+	return (depths > 17.3)
 
 def cat_in_goodwise(cat):
 	return cat[in_goodwise(cat['RA'], cat['DEC'])]
 
+
+
+
+def outside_galaxy(ras, decs, galcut=0, betacut=90, ebvcut=0.1, stardenscut=2000.):
+	stardens = hp.read_map('masks/stardens.fits')
+	ebv = hp.read_map('masks/ebv.fits')
+
+	densities = stardens[hp.ang2pix(hp.npix2nside(len(stardens)), ras, decs, lonlat=True)]
+	ebvs = ebv[hp.ang2pix(hp.npix2nside(len(ebv)), ras, decs, lonlat=True)]
+
+	l, b = coordhelper.equatorial_to_galactic(ras, decs)
+	lams, betas = coordhelper.equatorial_to_ecliptic(ras, decs)
+	goodbs = np.abs(b) > galcut
+	goodbetas = (betas < betacut)
+
+	gooddens = (densities < stardenscut)
+	goodebv = (ebvs < ebvcut)
+	return goodebv & gooddens & goodbs & goodbetas
+
+def cat_outside_galaxy(cat, galcut=0, betacut=90, ebvcut=0.1, stardenscut=2000.):
+	cat = cat[outside_galaxy(cat['RA'], cat['DEC'],
+							 galcut=galcut, betacut=betacut, ebvcut=ebvcut, stardenscut=stardenscut)]
+	return cat
+
+
 def in_goodclustering_area(ra, dec):
-	return in_lotss_dr2(ra, dec) & in_goodwise(ra, dec) & in_ls_dr8(ra, dec)
+	return in_lotss_dr2(ra, dec) & in_goodwise(ra, dec) & in_ls_dr8(ra, dec) & outside_galaxy(ra, dec)
 
 def cat_in_goodclustering_area(cat):
 	cat = cat_in_lotss(cat)
 	cat = cat_in_goodwise(cat)
 	cat = cat_in_ls_dr8(cat)
+	cat = cat_outside_galaxy(cat)
 	return cat
 
 
@@ -192,16 +203,28 @@ def cat_in_goodclustering_area(cat):
 	return rand"""
 
 def lotss_randoms(nrand):
-	rand = Table.read('../data/randoms/ls/dr8/randoms-inside-dr8-0.31.0-1.fits')
-	#rand = rand[np.where((rand['MASKBITS'] == 0) & (rand['WISEMASK_W1'] == 0) & (rand['WISEMASK_W2'] == 0))]
+	"""
+	Using randoms provided by Legacy Survey DR8
+	randomly sample and apply masks
+	:param nrand:
+	:return:
+	"""
+	rand = Table.read('catalogs/randoms_dr8.fits')
+	rand = rand[np.where((rand['WISEMASK_W1'] == 0) & (rand['WISEMASK_W2'] == 0))]
+	rand = rand['RA', 'DEC']
 	rand = rand[np.random.choice(len(rand), int(nrand * 10), replace=False)]
 	rand = cat_in_goodclustering_area(rand)
 	rand['weight'] = np.ones(len(rand))
 	rand = rand[np.random.choice(len(rand), int(nrand), replace=False)]
-	rand = rand['RA', 'DEC', 'weight']
 	return rand
 
 def rg_mask(nside):
+	"""
+	For CMB lensing analysis
+	Make a map at NSIDE, and apply same masks to centers of pixels as the clustering samples
+	:param nside:
+	:return:
+	"""
 	mask = np.zeros(hp.nside2npix(nside))
 	l, b = hp.pix2ang(nside, np.arange(len(mask)), lonlat=True)
 	ra, dec = coordhelper.galactic_to_equatorial(l, b)
@@ -385,8 +408,12 @@ def hzrg_cut(lotss, fcut=None):
 
 	lotss = lotss[np.where(lotss['Total_flux'] < params.hzrg_maxflux)]
 	lotss = lotss[np.where(lotss['LAS'] < params.lasmax)]
+	#lotss = lotss[np.where(np.logical_not(lotss['Resolved']))]
 	lotss = supercede_catwise(lotss, supercede_sep=params.supercede_cw_sep)
 	#lotss = lotss[np.where((lotss['L150'] > params.lumcut) | (np.logical_not(np.isfinite(lotss['zphot']))))]
+
+	if params.use_wiseflags:
+		lotss = lotss[np.where(lotss['abfl'] == "00")]
 
 
 	if params.w2faint is not None:
@@ -414,10 +441,12 @@ def hzrg_sample(fcut=None):
 	lotss = hzrg_cut(lotss, fcut=fcut)
 	return lotss
 
+
+
 def izrg_cut(lotss, lummin=None, lummax=np.inf, minz=None, maxz=None):
 	lotss = Table(lotss, copy=True)
-	lotss = lotss[np.where(lotss['Total_flux'] < params.izrg_maxflux)]
-	#lotss = lotss[np.where(lotss['LAS'] < params.lasmax)]
+	if params.izrg_maxflux is not None:
+		lotss = lotss[np.where(lotss['Total_flux'] < params.izrg_maxflux)]
 	lotss['weight'] = np.ones(len(lotss))
 
 	if lummin is None:
@@ -429,7 +458,10 @@ def izrg_cut(lotss, lummin=None, lummax=np.inf, minz=None, maxz=None):
 
 	lotss = supercede_catwise(lotss, supercede_sep=params.supercede_cw_sep)
 
-	#lotss = lotss[np.where((lotss['W2'] < params.w2faint))]
+	lotss = lotss[np.where((lotss['W2'] < params.w2faint))]
+
+	if params.use_wiseflags:
+		lotss = lotss[np.where(lotss['abfl'] == "00")]
 
 	nothzrg = (lotss['W1'] - lotss['W2']) < params.hzrg_cut_eqn(lotss['W2'])
 	#notlzrg = (lotss['W1'] - lotss['W2']) < ((lotss['W2'] - 17) / 3. + 0.75)
@@ -463,12 +495,16 @@ def lzrg_cut(lotss):
 	#lotss = lotss[np.where(lotss['LAS'] < params.lasmax)]
 
 	lotss = supercede_catwise(lotss, supercede_sep=params.supercede_cw_sep)
+
+	if params.use_wiseflags:
+		lotss = lotss[np.where(lotss['abfl'] == "00")]
 	# if using Duncan photometric redshifts (Hardcastle+23 catalog) to select low-redshift luminous AGN,
 	# instead of using WISE colors like higher-redshift samples
 	if params.lzrg_minzphot is not None:
+		lotss = lotss[np.where(lotss['W2'] < params.w2faint_lzrg)]
 		lotss = lotss[np.where((lotss['zphot'] > params.lzrg_minzphot) & (lotss['zphot'] < params.lzrg_maxzphot))]
 		# still throw out HzRGs
-		#lotss = lotss[np.where((lotss['W1'] - lotss['W2']) < params.hzrg_cut_eqn(lotss['W2']))]
+		lotss = lotss[np.where((lotss['W1'] - lotss['W2']) < params.hzrg_cut_eqn(lotss['W2']))]
 		lotss = lotss[np.where(lotss['L150'] > params.lumcut)]
 
 	# otherwise use WISE color cuts to try to select 0.25 < z < 0.5 radio galaxies
@@ -492,6 +528,7 @@ def lzrg_sample():
 	lotss = cat_in_goodclustering_area(lotss)
 	lotss = lzrg_cut(lotss)
 	return lotss
+
 
 
 
@@ -551,18 +588,48 @@ def rg_redshifts():
 	rgs = get_redshifts.match_to_spec_surveys(rgs, seplimit=3)
 	rgs.write('catalogs/rgs_specz.fits', overwrite=True)
 
-def treat_dndz_pdf(cat, sep=3., ndraws=100, bootesonly=False):
+"""def treat_dndz_pdf(cat, sep=2., ndraws=100, bootesonly=False):
+
 	if bootesonly:
 		photcat = match2bootes(cat, sep=sep)
 	else:
 		photcat = match2combined(cat, sep=sep)
+	maxpossiblez = 3.
+	# objects with spec-zs
+	specs = photcat[np.where((photcat['f_zbest'] == 1) | (photcat['hasz'] == 1))]
+	# with only photo-zs
+	photcat = photcat[np.where((photcat['f_zbest'] == 0) & (photcat['hasz'] == 0))]
 
-	specs = photcat[np.where(photcat['f_zbest'] == 1)]
-	phots = photcat[np.where(photcat['f_zbest'] == 0)]
+	# throwing out systems with uninformative PDFS
+	# require positive minimum bound
+	photcat = photcat[np.where(
+							((photcat['z1min'] > 0.1) & ((photcat['z2min'] > 0.1) | (photcat['z2min'] < -50)))
+							)]
+	photcat = photcat[np.where(
+		(photcat['z1med'] > 0.8) | ((photcat['z1med'] - photcat['z1min']) < 0.1)
+	)]
+	# require reasonable maximum bound
+	photcat = photcat[np.where(
+							((photcat['z1max'] < maxpossiblez) & ((photcat['z2max'] < maxpossiblez)))
+							)]
+	# throw out things with very broad PDFs
+	#photcat = photcat[np.where(
+	#						((photcat['z1max']-photcat['z1med']) < 1) & ((((photcat['z1med']-photcat['z1min']) < 0.3)) |
+	#																	 (photcat['z1med'] > 1))
+	#						)]
+	#photcat = photcat[np.where(
+	#	(photcat['z2med'] < -50) |
+	#	(((photcat['z2max'] - photcat['z2med']) < 0.3) & ((photcat['z2med'] - photcat['z2min']) < 0.3))
+	#)]
 
-	singlephots = phots[np.where(phots['z2med'] == -99)]
-	doublephots = phots[np.where(phots['z2med'] > 0)]
-	maxpossiblez = 3.5
+
+
+
+	# systems where there is only one peak in the photoz PDF
+	singlephots = photcat[np.where(photcat['z2med'] == -99)]
+	# sources where there are two peaks
+	doublephots = photcat[np.where(photcat['z2med'] > 0)]
+
 
 	speczs = list(np.repeat(specs['z_best'], ndraws))
 	#specweights = list(ndraws*np.ones_like(speczs))
@@ -570,6 +637,7 @@ def treat_dndz_pdf(cat, sep=3., ndraws=100, bootesonly=False):
 	singlezs, singleweights = [], []
 	for j in range(len(singlephots)):
 		thisrow = singlephots[j]
+		# Duncan is reporting  bounds of 80% confidence interval
 		uperr = (thisrow['z1max'] - thisrow['z1med']) / 1.3
 		loerr = (thisrow['z1med'] - thisrow['z1min']) / 1.3
 		weight = thisrow['z1area']
@@ -621,7 +689,48 @@ def treat_dndz_pdf(cat, sep=3., ndraws=100, bootesonly=False):
 
 
 	finalzs = np.array(speczs + singlezs + doublezs1 + doublezs2)
-	return finalzs
+	return finalzs"""
+
+def treat_dndz_pdf(cat, sep=2., minz=0.1, maxz=3.):
+	"""
+	Infer redshift distribution from photo-zs
+	:param cat:
+	:param sep:
+	:return:
+	"""
+	from scipy.stats import norm
+	match = match2combined(cat, sep=sep)
+	# objects with spec-zs
+	specs = match[np.where((match['f_zbest'] == 1) | (match['hasz'] == 1))]
+	# with only photo-zs
+	phot = match[np.where((match['f_zbest'] == 0) & (match['hasz'] == 0))]
+
+
+	phot = phot[(phot['z1min'] > minz) & (phot['z1med'] > minz) & (phot['z1max'] < maxz) & (phot['z1med'] < maxz)]
+
+	z1med, z1min, z1max = phot['z1med'], phot['z1min'], phot['z1max']
+	z1med_weight = phot['z1area']
+	z1min_weight = phot['z1area'] * norm.pdf(1.28) / norm.pdf(0)
+
+	withz2 = phot[(phot['z2min'] > minz) & (phot['z2med'] > minz) & (phot['z2max'] < maxz) & (phot['z2med'] < maxz)]
+	frac_withz2 = len(withz2) / len(phot)
+
+	z2med, z2min, z2max = withz2['z2med'], withz2['z2min'], withz2['z2max']
+	z2med_weight = frac_withz2 * withz2['z2area']
+	z2min_weight = frac_withz2 * withz2['z2area'] * norm.pdf(1.28) / norm.pdf(0)
+
+	zs = np.concatenate((z1med, z1min, z1max, z2med, z2min, z2max))
+	zweight = np.concatenate((z1med_weight, z1min_weight, z1min_weight, z2med_weight, z2min_weight, z2min_weight))
+	zweight /= np.sum(zweight)
+
+	drawn_photz = np.random.choice(zs, 10000, replace=True, p=zweight)
+
+	frac_with_spec = len(specs) / len(phot)
+	drawn_specz_repeated = np.random.choice(specs['z_best'], int(10000*frac_with_spec), replace=True)
+
+	allzs = np.concatenate((drawn_specz_repeated, drawn_photz))
+	allzs = allzs[allzs < 4.]
+	return allzs
 
 def savgol_dndz(dndz):
 	from scipy.signal import savgol_filter
@@ -630,13 +739,11 @@ def savgol_dndz(dndz):
 	dndz = redshift_helper.norm_z_dist((dndz[0], smoothed))
 	return dndz
 
-def hzrg_dndz(hzrgcat, nzbins=30, zrange=(0.1, 4.)):
-	zs = treat_dndz_pdf(cat=hzrgcat, sep=2., bootesonly=False)
-	dndz = redshift_helper.dndz_from_z_list(zs, nbins=nzbins, zrange=zrange)
-	dndz = savgol_dndz(dndz)
-	return dndz, np.median(zs)
 
-def redshift_dist(cat, sep, bootesonly=True):
+
+
+
+def redshift_dist(cat, sep=2., bootesonly=True):
 	if bootesonly:
 		deepcat = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
 	else:
@@ -648,6 +755,27 @@ def redshift_dist(cat, sep, bootesonly=True):
 	zs = deepcat['z_best']
 	#speczs = bootes['Z'][np.where(bootes['Z'] > 0)]
 	return zs
+
+def get_dndz(cat):
+	zs = redshift_dist(cat)
+	dndz = redshift_helper.dndz_from_z_list(zs, nbins=params.nzbins, zrange=params.zbin_range)
+	# dont need beyond where dndz->0, chop off
+	minidx = np.min(np.nonzero(dndz[1]))
+	maxidx = np.max(np.nonzero(dndz[1])) + 1
+	dndz = dndz[0][minidx:maxidx], dndz[1][minidx:maxidx]
+	# increase resolution of dn/dz
+	dndz = redshift_helper.fill_in_coarse_dndz(dndz, np.linspace(np.min(dndz[0]), np.max(dndz[0]), params.nzbins))
+	return dndz, np.median(zs)
+
+
+def hzrg_dndz(hzrgcat, pdfs=True, bootesonly=False):
+	if pdfs:
+		zs = treat_dndz_pdf(cat=hzrgcat, sep=2.)
+	else:
+		zs = redshift_dist(hzrgcat, bootesonly=bootesonly)
+	dndz = redshift_helper.dndz_from_z_list(zs, nbins=params.nzbins, zrange=params.zbin_range)
+	dndz = savgol_dndz(dndz)
+	return dndz, np.median(zs)
 
 def spline_dndz(dndz, n_newzs, spline_k=4, smooth=0.05):
 	from halomodelpy import redshift_helper
@@ -720,7 +848,6 @@ def estimate_rg_magbias(whichsamp, magdiff=0.1, nboots=100):
 
 		smus.append(np.mean([dlogn_dm_1, dlogn_dm_2]))
 	return smu, np.std(smus)
-
 
 
 

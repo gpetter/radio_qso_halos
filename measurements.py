@@ -78,7 +78,7 @@ def linear_cf(cf, eff_z, min_r=5., max_r=25.):
     cf['nonlinidx'] = np.where(np.logical_not(np.in1d(np.arange(len(cf['theta'])), cf['linidx'])))[0]
     return cf, lincf
 
-def autocorr_hzrgs(rpscales, nzbins=30, zrange=(0.1, 4.)):
+def autocorr_hzrgs(rpscales):
 
     old = glob.glob('results/cfs/auto/hzrg*')
     old += glob.glob('results/fits/auto/hzrg*')
@@ -87,11 +87,11 @@ def autocorr_hzrgs(rpscales, nzbins=30, zrange=(0.1, 4.)):
         os.remove(name)
 
     lotss = sample.hzrg_sample()
-    rand = sample.lotss_randoms(len(lotss)*10)
+    rand = sample.lotss_randoms(len(lotss)*20)
 
-    dndz_lotss, zs = sample.hzrg_dndz(lotss, nzbins=nzbins, zrange=zrange)
+    dndz_lotss, eff_z = sample.hzrg_dndz(lotss)
     np.array(dndz_lotss).dump('results/dndz/hzrg.pickle')
-    eff_z = np.median(zs)
+    #eff_z = np.median(zs)
     thetabins = cosmo.rp2angle(rpscales, eff_z, True)
 
     cf = twoPointCFs.autocorr_cat(thetabins, lotss, rand, nbootstrap=500)
@@ -104,9 +104,20 @@ def autocorr_hzrgs(rpscales, nzbins=30, zrange=(0.1, 4.)):
     fit = clustering_fit.fit_pipeline(dndz_lotss, lincf)
     fit['eff_z'] = eff_z
     fit.pop('plot')
+
+    duty, loduty, hiduty = lumfunc.dutycycle_from_bias(dndz_or_zrange=dndz_lotss,
+                                                       bias_and_err=(fit['b'], fit['sigb']),
+                                                       f_or_l_min=params.hzrg_fluxcut, f_or_l_max=params.hzrg_maxflux,
+                                                       lftype='agn',
+                                                       lumbound=False)
+    fit['fduty'] = duty
+    fit['fduty_loerr'] = loduty
+    fit['fduty_hierr'] = hiduty
+
     write_pickle('results/fits/auto/hzrg', fit)
     results.autocorrs()
     results.halomass()
+    results.dutycycle()
 
 
 def autocorr_izrgs(rpscales):
@@ -118,11 +129,9 @@ def autocorr_izrgs(rpscales):
 
 
     lotss = sample.izrg_sample()
-    rand = sample.lotss_randoms()
-    zs = sample.treat_dndz_pdf(lotss)
-    dndz_lotss = redshift_helper.dndz_from_z_list(zs, 7, zrange=(0.3, 1.2))
+    rand = sample.lotss_randoms(30*len(lotss))
+    dndz_lotss, eff_z = sample.get_dndz(lotss)
     np.array(dndz_lotss).dump('results/dndz/izrg.pickle')
-    eff_z = np.median(zs)
     thetabins = cosmo.rp2angle(rpscales, eff_z, True)
 
     cf = twoPointCFs.autocorr_cat(thetabins, lotss, rand, nbootstrap=500)
@@ -134,11 +143,21 @@ def autocorr_izrgs(rpscales):
     fit = clustering_fit.fit_pipeline(dndz_lotss, lincf)
     fit['eff_z'] = eff_z
     fit.pop('plot')
+
+    duty, loduty, hiduty = lumfunc.dutycycle_from_bias(dndz_or_zrange=dndz_lotss,
+                                                       bias_and_err=(fit['b'], fit['sigb']),
+                                                       f_or_l_min=params.lumcut, f_or_l_max=29., lftype='agn',
+                                                       lumbound=True)
+    fit['fduty'] = duty
+    fit['fduty_loerr'] = loduty
+    fit['fduty_hierr'] = hiduty
+
     write_pickle('results/fits/auto/izrg', fit)
     results.autocorrs()
     results.halomass()
+    results.dutycycle()
 
-def autocorr_lzrgs(rpscales, nzbins=15):
+def autocorr_lzrgs(rpscales):
     old = glob.glob('results/cfs/auto/lzrg*')
     old += glob.glob('results/fits/auto/lzrg*')
     old += glob.glob('results/dndz/lzrg*')
@@ -147,11 +166,13 @@ def autocorr_lzrgs(rpscales, nzbins=15):
 
 
     lotss = sample.lzrg_sample()
-    rand = sample.lotss_randoms()
-    zs = sample.treat_dndz_pdf(lotss)
-    dndz_lotss = redshift_helper.dndz_from_z_list(zs, nzbins, zrange=(0.1, 2.))
+    rand = sample.lotss_randoms(100*len(lotss))
+    #zs = sample.treat_dndz_pdf(lotss)
+    #zs = sample.redshift_dist(lotss, 2.)
+    #dndz_lotss = redshift_helper.dndz_from_z_list(zs, nzbins, zrange=(0.1, 2.))
+    dndz_lotss, eff_z = sample.get_dndz(lotss)
     np.array(dndz_lotss).dump('results/dndz/lzrg.pickle')
-    eff_z = np.median(zs)
+    #eff_z = np.median(zs)
     thetabins = cosmo.rp2angle(rpscales, eff_z, True)
 
     cf = twoPointCFs.autocorr_cat(thetabins, lotss, rand, nbootstrap=500)
@@ -163,10 +184,20 @@ def autocorr_lzrgs(rpscales, nzbins=15):
     fit = clustering_fit.fit_pipeline(dndz_lotss, lincf)
     fit['eff_z'] = eff_z
     fit.pop('plot')
+    duty, loduty, hiduty = lumfunc.dutycycle_from_bias(dndz_or_zrange=dndz_lotss,
+                                                       bias_and_err=(fit['b'], fit['sigb']),
+                                                       f_or_l_min=params.lumcut, f_or_l_max=29., lftype='agn',
+                                                       lumbound=True)
+    fit['fduty'] = duty
+    fit['fduty_loerr'] = loduty
+    fit['fduty_hierr'] = hiduty
+
+
     write_pickle('results/fits/auto/lzrg', fit)
     results.auto_lzrg()
     results.autocorrs()
     results.halomass()
+    results.dutycycle()
 
 def hod_bounds(chain, freeparam_ids):
     from halomodelpy import hod_model
@@ -183,8 +214,8 @@ def hod_bounds(chain, freeparam_ids):
 
     return np.array(mgrid), np.array(lobounds), np.array(upbounds)
 
-def hodfit(whichsample, nwalkers=10, niter=1000, freeparam_ids=['M', 'M1', 'alpha'], inital_params=[12.7, 13.1, .8]):
-
+def hodfit(whichsample, nwalkers, niter, freeparam_ids, inital_params):
+    from halomodelpy import hod_model
     old = glob.glob('results/hod/%s*' % whichsample)
     for name in old:
         os.remove(name)
@@ -193,11 +224,14 @@ def hodfit(whichsample, nwalkers=10, niter=1000, freeparam_ids=['M', 'M1', 'alph
     dndz = read_pickle('results/dndz/%s.pickle' % whichsample)
 
     fitmc = clustering_fit.fitmcmc(nwalkers=nwalkers, niter=niter, dndz=dndz, cf=cf,
-                                   freeparam_ids=freeparam_ids, initial_params=inital_params)
+                                   freeparam_ids=freeparam_ids, initial_params=inital_params,
+                                   prior_dict=params.prior_dict)
     mgrid, lobounds, hibounds = hod_bounds(fitmc['chain'], freeparam_ids=freeparam_ids)
     fitmc['mgrid'] = mgrid
     fitmc['hod_lo'] = lobounds
     fitmc['hod_hi'] = hibounds
+    fitmc['fsat_chain'] = hod_model.fsat_dndz(dndz, fitmc['chain'], ['M', 'sigM', 'M1', 'alpha'])
+
 
     fitmc.pop('corner')
     write_pickle('results/hod/%s' % whichsample, fitmc)
@@ -259,7 +293,7 @@ def desi_elg_xcorr(rpscales):
 
 
 
-def hzrg_xcorr(rpscales, pimax=30, nzbins=30, nboots=0, zrange=(0.1, 4.)):
+def hzrg_xcorr(rpscales, pimax=40, nboots=0):
     oldresults = glob.glob('results/cfs/tomo/rg_qso*.pickle')
     oldresults += glob.glob('results/fits/tomo/rg_qso*.pickle')
     oldresults += glob.glob('results/dndz/hzrg.pickle')
@@ -278,7 +312,7 @@ def hzrg_xcorr(rpscales, pimax=30, nzbins=30, nboots=0, zrange=(0.1, 4.)):
     rand = sample.cat_in_goodclustering_area(rand)
 
 
-    dndz_lotss, zs = sample.hzrg_dndz(lotss, nzbins=nzbins, zrange=zrange)
+    dndz_lotss, zs = sample.hzrg_dndz(lotss)
     np.array(dndz_lotss).dump('results/dndz/hzrg.pickle')
 
     for j in range(len(eboss_zbins)-1):
@@ -290,11 +324,11 @@ def hzrg_xcorr(rpscales, pimax=30, nzbins=30, nboots=0, zrange=(0.1, 4.)):
         theta_scales = cosmo.rp2angle(rps=rpscales, z=np.median(randz['Z']), h_unit=True)
 
 
-        autofit, autocf = pipeline.measure_and_fit_autocf(scales=rpscales, datcat=qsoz, randcat=randz, nbootstrap=500, nzbins=10, pimax=pimax)
+        autofit, autocf = pipeline.measure_and_fit_autocf(scales=rpscales, datcat=qsoz, randcat=randz, nbootstrap=500, nzbins=30, pimax=pimax)
         autofit.pop('plot')
         write_pickle('results/fits/tomo/qso_fit_%s' % j, autofit)
 
-        dndz_qso_matched = redshift_helper.dndz_from_z_list(randz['Z'], nzbins, zrange=zrange)
+        dndz_qso_matched = redshift_helper.dndz_from_z_list(randz['Z'], params.nzbins, zrange=params.zbin_range)
         #dndz_lotss = redshift_helper.spl_interp_dndz(dndz_lotss, newzs=dndz_qso_matched[0], spline_k=5, smooth=0.03)
         dndz_lotss = redshift_helper.fill_in_coarse_dndz(dndz_lotss, dndz_qso_matched[0])
 
@@ -310,19 +344,36 @@ def hzrg_xcorr(rpscales, pimax=30, nzbins=30, nboots=0, zrange=(0.1, 4.)):
 
         xfit = clustering_fit.fit_xcf(dndz_lotss, xcf, dndz_qso_matched, autocf, model='mass')
         xfit.update(clustering_fit.fit_xcf(dndz_lotss, xcf, dndz_qso_matched, autocf, model='minmass'))
+        xfit.update(clustering_fit.fit_xcf(dndz_lotss, xcf, dndz_qso_matched, autocf, model='bias'))
         xfit['eff_z'] = redshift_helper.effective_z(dndz_lotss, dndz_qso_matched)
 
+
+
         if nboots > 0:
-            ms, m_mins = [], []
+            bs, ms, m_mins = [], [], []
             for k in range(nboots):
-                boot_dndz = draw_hzrg_dndz(zs, nbins_mean=nzbins, zrange=zrange)
+                boot_dndz = draw_hzrg_dndz(zs, nbins_mean=params.nzbins, zrange=params.zbin_range)
                 xfit_boot = clustering_fit.fit_xcf(boot_dndz, xcf, dndz_qso_matched, autocf, model='mass')
                 xfit_boot.update(clustering_fit.fit_xcf(boot_dndz, xcf, dndz_qso_matched, autocf, model='minmass'))
+                xfit_boot.update(clustering_fit.fit_xcf(boot_dndz, xcf, dndz_qso_matched, autocf, model='bias'))
                 ms.append(xfit_boot['Mx'])
                 m_mins.append(xfit_boot['Mxmin'])
+                bs.append(xfit_boot['bx'])
             # add error in quadrature
             xfit['sigMx'] = np.sqrt(np.square(xfit['sigMx']) + np.square(np.std(ms)))
             xfit['sigMxmin'] = np.sqrt(np.square(xfit['sigMxmin']) + np.square(np.std(m_mins)))
+            xfit['sigbx'] = np.sqrt(np.square(xfit['sigbx']) + np.square(np.std(bs)))
+
+        dndz_x = redshift_helper.norm_z_dist((dndz_qso_matched[0], dndz_qso_matched[1] * dndz_lotss[1]))
+        duty, loduty, hiduty = lumfunc.dutycycle_from_bias(dndz_or_zrange=dndz_x,
+                                                           bias_and_err=(xfit['bx'], xfit['sigbx']),
+                                                           f_or_l_min=params.hzrg_fluxcut,
+                                                           f_or_l_max=params.hzrg_maxflux,
+                                                           lftype='agn',
+                                                           lumbound=False)
+        xfit['fduty'] = duty
+        xfit['fduty_loerr'] = loduty
+        xfit['fduty_hierr'] = hiduty
 
 
         cflist.append(xcf)
@@ -330,6 +381,7 @@ def hzrg_xcorr(rpscales, pimax=30, nzbins=30, nboots=0, zrange=(0.1, 4.)):
 
     results.cross_cfs()
     results.halomass()
+    results.dutycycle()
 
 
 
@@ -383,7 +435,7 @@ def lzrg_xcorr(rpscales, nzbins=15):
 
     write_pickle('results/fits/tomo/rg_lowz_fit', xfit)
     results.cross_lzrg()
-    results.halomass(lzrg=True)
+    results.halomass()
 
 
 
@@ -393,7 +445,7 @@ def lzrg_xcorr(rpscales, nzbins=15):
 
 
 
-def lens_hzrg(rpscales, nside=1024, nzbins=30, zrange=(0.1, 4.)):
+def lens_hzrg(rpscales, nside=1024):
     from lensing_Helper import measure_lensing_xcorr
 
 
@@ -407,7 +459,7 @@ def lens_hzrg(rpscales, nside=1024, nzbins=30, zrange=(0.1, 4.)):
 
     mask = sample.rg_mask(nside)
     #mask = np.ones(hp.nside2npix(nside))
-    dndz, zs = sample.hzrg_dndz(lotss, nzbins=nzbins, zrange=zrange)
+    dndz, foo = sample.hzrg_dndz(lotss)
     eff_z = redshift_helper.effective_lensing_z(dndz)
     ells = np.array(cosmo.rp2ell(rpscales, eff_z), dtype=int)
     ells = np.logspace(np.log10(200), np.log10(2000), 11)
@@ -465,7 +517,7 @@ def lumtrend(rpscales, nzbins=15, minz=0.3, maxz=0.8):
 
     lotss = sample.izrg_sample(lummin=24.5, minz=minz, maxz=maxz)
 
-    rand = sample.lotss_randoms()
+    rand = sample.lotss_randoms(10*len(lotss))
 
     duty, loerr, hierr, medlums = [], [], [], []
     mass, masserr = [], []
@@ -507,74 +559,7 @@ def lumtrend(rpscales, nzbins=15, minz=0.3, maxz=0.8):
 
 
 
-def duty_cycle():
 
-
-
-    lzrgxfit = read_pickle('results/fits/tomo/rg_lowz_fit.pickle')
-    lzrgautofit = read_pickle('results/fits/auto/lzrg.pickle')
-    """dutylzrg = lumfunc.occupation_lumbound_zrange(lzrgfit['Mxmin'], (params.lzrg_minzphot, params.lzrg_maxzphot),
-                                                  params.lumcut, lftype='lerg')
-    lzrgloerr = dutylzrg - lumfunc.occupation_lumbound_zrange(lzrgfit['Mxmin'] - lzrgfit['sigMxmin'],
-                                                              (params.lzrg_minzphot, params.lzrg_maxzphot),
-                                                  params.lumcut, lftype='lerg')
-    lzrghierr = lumfunc.occupation_lumbound_zrange(lzrgfit['Mxmin'] + lzrgfit['sigMxmin'],
-                                                              (params.lzrg_minzphot, params.lzrg_maxzphot),
-                                                  params.lumcut, lftype='lerg') - dutylzrg"""
-    dndz_lzrg = read_pickle('results/dndz/lzrg.pickle')
-    duty, loduty, hiduty = lumfunc.dutycycle_from_bias(dndz_or_zrange=dndz_lzrg,
-                                           bias_and_err=(lzrgautofit['b'], lzrgautofit['sigb']),
-                                           f_or_l_min=params.lumcut, f_or_l_max=29., lftype='lerg', lumbound=True)
-
-
-    lzrgstuff = [lzrgautofit['eff_z'], duty, loduty, hiduty]
-
-
-    izrgfit = read_pickle('results/fits/auto/izrg.pickle')
-    dndz_izrg = read_pickle('results/dndz/izrg.pickle')
-
-    duty, loduty, hiduty = lumfunc.dutycycle_from_bias(dndz_or_zrange=dndz_izrg,
-                                                       bias_and_err=(izrgfit['b'], izrgfit['sigb']),
-                                                       f_or_l_min=params.lumcut, f_or_l_max=29., lftype='lerg',
-                                                       lumbound=True)
-
-    izrgstuff = [izrgfit['eff_z'], duty, loduty, hiduty]
-
-
-    hzrgfit = read_pickle('results/fits/auto/hzrg.pickle')
-    dndz_hzrg = read_pickle('results/dndz/hzrg.pickle')
-
-    duty, loduty, hiduty = lumfunc.dutycycle_from_bias(dndz_or_zrange=dndz_hzrg,
-                                                       bias_and_err=(hzrgfit['b'], hzrgfit['sigb']),
-                                                       f_or_l_min=params.hzrg_fluxcut, f_or_l_max=params.hzrg_maxflux,
-                                                       lftype='agn',
-                                                       lumbound=False)
-
-    hzrgstuff = [hzrgfit['eff_z'], duty, loduty, hiduty]
-
-
-
-
-    """z_centers = []
-
-    qsofitnames = glob.glob('results/fits/tomo/rg_qso*.pickle')
-    fits = []
-    qsozrange = [1., 1.5, 2., 3]
-    for name in qsofitnames:
-        thisfit = read_pickle(name)
-        fits.append(thisfit)
-        z_centers.append(thisfit['eff_z'])
-
-    duty, loerr, hierr = [], [], []
-    for j in range(len(fits)):
-        fduty = lumfunc.occupation_fluxlim_zrange(logminmass=fits[j]['Mxmin'], zrange=(qsozrange[j], qsozrange[j+1]),
-                                          fluxcut=fluxcuthi, fluxmax=1000.)
-        duty.append(fduty)
-        loerr.append(fduty-lumfunc.occupation_fluxlim_zrange(zrange=(qsozrange[j], qsozrange[j+1]), logminmass=fits[j]['Mxmin'] - fits[j]['sigMxmin'], fluxcut=fluxcuthi, fluxmax=fluxmax))
-        hierr.append(lumfunc.occupation_fluxlim_zrange(zrange=(qsozrange[j], qsozrange[j + 1]), logminmass=fits[j]['Mxmin'] + fits[j]['sigMxmin'],
-                                                 fluxcut=fluxcuthi, fluxmax=1000.)-fduty)"""
-
-    results.dutycycle(lzrgstuff, izrgstuff, hzrgstuff)
 
 def haloenergy():
     z_centers = []
@@ -651,7 +636,7 @@ def halopower(mcut=13., sigM=0.5):
     izrgs = [izrgfit['eff_z'], power, loerr, hierr]
 
 
-    lzrgfit = read_pickle('results/fits/tomo/rg_lowz_fit.pickle')
+    lzrgfit = read_pickle('results/fits/auto/lzrg.pickle')
     dndz_lzrg = read_pickle('results/dndz/lzrg.pickle')
     """e_lzrg = lumfunc.energy_per_halo_zrange((0.25, 0.5), logminmass_hod=lzrgfit['Mxmin'], logminmass_cut=mcut,
                                             fluxcut=fluxcutlo, fluxmax=fluxmax, lftype='lerg', avg_power=True)
@@ -666,12 +651,23 @@ def halopower(mcut=13., sigM=0.5):
                                                fluxcut=fluxcutlo, fluxmax=fluxmax, lftype='lerg',
                                                avg_power=True) - e_lzrg"""
     power, loerr, hierr = lumfunc.heat_per_massive_halo_frombias(dndz_or_zrange=dndz_lzrg,
-                                                                 bias_and_err=[lzrgfit['bx'], lzrgfit['sigbx']],
+                                                                 bias_and_err=[lzrgfit['b'], lzrgfit['sigb']],
                                                                  logminmass_cut=mcut, sigM=sigM,
                                                                  f_or_l_min=params.lumcut,
-                                                                 f_or_l_max=29., lftype='lerg', lumbound=True)
+                                                                 f_or_l_max=29., lftype='agn', lumbound=True)
 
     lzrgs = [lzrgfit['eff_z'], power, loerr, hierr]
+
+    hzrgfit = read_pickle('results/fits/auto/hzrg.pickle')
+    dndz_hzrg = read_pickle('results/dndz/hzrg.pickle')
+    power, loerr, hierr = lumfunc.heat_per_massive_halo_frombias(dndz_or_zrange=dndz_hzrg,
+                                                                 bias_and_err=[hzrgfit['bx'], hzrgfit['sigbx']],
+                                                                 logminmass_cut=mcut, sigM=sigM,
+                                                                 f_or_l_min=params.hzrg_fluxcut,
+                                                                 f_or_l_max=params.hzrg_maxflux,
+                                                                 lftype='agn', lumbound=False)
+
+    hzrgs = [hzrgfit['eff_z'], power, loerr, hierr]
 
 
     qsofitnames = sorted(glob.glob('results/fits/tomo/rg_qso*.pickle'))
@@ -715,57 +711,38 @@ def halopower(mcut=13., sigM=0.5):
 
     #hzrgs = [z_centers, es, elo, ehi]
 
-    results.avghalopower(lzrgs, izrgs, None, qsowindinfo)
+    results.avghalopower(lzrgs, izrgs, hzrgs, qsowindinfo)
 
-def halopower_ratio(useHOD=False, sigM=0.5, dlogM=0.5):
-    from halomodelpy import bias_tools
-    z_centers = []
-    import glob
+def halopower_ratio(useHOD=True, sigM=0.5, dlogM=0.1):
 
 
-    mass_cut_grid = np.linspace(12.25, 13.75, 10)
+
+    mass_cut_grid = np.linspace(12., 13.75, 10)
 
     izrgfit = read_pickle('results/fits/auto/izrg.pickle')
 
     izrg_ratios = []
     dndz_izrg = read_pickle('results/dndz/izrg.pickle')
-    chain = read_pickle('results/hod/izrg.pickle')['chain']
+    hoddict = read_pickle('results/hod/izrg.pickle')
+    chain = hoddict['chain']
     chain = chain[-100:]
-    for mcut in mass_cut_grid:
+    for j in range(len(mass_cut_grid)-1):
 
 
         if useHOD:
 
-            min_ratio, max_ratio = lumfunc.jet_wind_power_ratio_hoddraws(
+            min_ratio, max_ratio = lumfunc.jet_wind_power_ratio_hod(
                 zrangeqso=(params.izrg_minzphot, params.izrg_maxzphot),
-                logminmass_cut=mcut, rg_dndz_or_zrange=dndz_izrg,
-                hoddraws=chain, f_or_l_min=params.lumcut, f_or_l_max=29.,
-                lftype='lerg', lumbound=True, logmaxmass=(mcut+dlogM))
+                logminmass_cut=mass_cut_grid[j], rg_dndz_or_zrange=dndz_izrg,
+                hoddict=hoddict, f_or_l_min=params.lumcut, f_or_l_max=29.,
+                lftype='agn', lumbound=True, logmaxmass=mass_cut_grid[j+1])
         else:
             min_ratio, max_ratio = lumfunc.jet_wind_power_ratio_frombias(
                 zrangeqso=(params.izrg_minzphot, params.izrg_maxzphot),
                 logminmass_cut=mcut, sigM=sigM, rg_dndz_or_zrange=dndz_izrg,
                 bias_and_err=(izrgfit['b'], izrgfit['sigb']), f_or_l_min=params.lumcut, f_or_l_max=29.,
-                lftype='lerg', lumbound=True, logmaxmass=(mcut+dlogM))
-        """m_char, mlo, mhi = bias_tools.avg_bias2mass_transition(dndz=dndz_izrg, b=izrgfit['b'], sigma=sigM, berr=izrgfit['sigb'])
-        e_izrg = lumfunc.energy_per_halo_zrange((0.5, 1.), logminmass_hod=m_char, logminmass_cut=mcut,
-                                        fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg', avg_power=True, sigM=sigM)
+                lftype='agn', lumbound=True, logmaxmass=(mcut+dlogM))
 
-        izrgloerr = e_izrg - lumfunc.energy_per_halo_zrange((0.5, 1.),
-                                                            logminmass_hod=(m_char - mlo),
-                                                            logminmass_cut=mcut,
-                                                            fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg',
-                                                            avg_power=True, sigM=sigM)
-        izrghierr = lumfunc.energy_per_halo_zrange((0.5, 1.), logminmass_hod=(m_char + mhi),
-                                                   logminmass_cut=mcut,
-                                                   fluxcut=fluxcutmid, fluxmax=fluxmax, lftype='lerg',
-                                                   avg_power=True, sigM=sigM) - e_izrg
-        qpowermin = lumfunc.type1_windpowerperhalo(zrange=(0.5, 1.), logminmass=mcut, kinetic_frac=kineticfraclow)
-        qpowermax = lumfunc.type1_windpowerperhalo(zrange=(0.5, 1.), logminmass=mcut, kinetic_frac=kineticfrachi)
-
-        # highest jet to wind ratio is combination of max jet power and min wind power
-        max_ratio = 10 ** ((e_izrg + izrghierr) - qpowermin)
-        min_ratio = 10 ** ((e_izrg - izrgloerr) - qpowermax)"""
 
 
         izrg_ratios.append([min_ratio, max_ratio])
@@ -776,24 +753,24 @@ def halopower_ratio(useHOD=False, sigM=0.5, dlogM=0.5):
     lzrg_ratios = []
     lzrgfit = read_pickle('results/fits/tomo/rg_lowz_fit.pickle')
     dndz_lzrg = read_pickle('results/dndz/lzrg.pickle')
-    chain = read_pickle('results/hod/lzrg.pickle')['chain']
+    hoddict = read_pickle('results/hod/lzrg.pickle')
+    chain = hoddict['chain']
     chain = chain[-100:]
-    for mcut in mass_cut_grid:
-
+    for j in range(len(mass_cut_grid)-1):
 
         if useHOD:
 
-            min_ratio, max_ratio = lumfunc.jet_wind_power_ratio_hoddraws(
+            min_ratio, max_ratio = lumfunc.jet_wind_power_ratio_hod(
                 zrangeqso=(params.lzrg_minzphot, params.lzrg_maxzphot),
-                logminmass_cut=mcut, rg_dndz_or_zrange=dndz_lzrg,
-                hoddraws=chain, f_or_l_min=params.lumcut, f_or_l_max=29.,
-                lftype='lerg', lumbound=True, logmaxmass=(mcut+dlogM))
+                logminmass_cut=mass_cut_grid[j], rg_dndz_or_zrange=dndz_lzrg,
+                hoddict=hoddict, f_or_l_min=params.lumcut, f_or_l_max=29.,
+                lftype='agn', lumbound=True, logmaxmass=mass_cut_grid[j+1])
         else:
             min_ratio, max_ratio = lumfunc.jet_wind_power_ratio_frombias(
                 zrangeqso=(params.lzrg_minzphot, params.lzrg_maxzphot),
                 logminmass_cut=mcut, sigM=sigM, rg_dndz_or_zrange=dndz_lzrg,
                 bias_and_err=(lzrgfit['bx'], lzrgfit['sigbx']), f_or_l_min=params.lumcut, f_or_l_max=29.,
-                lftype='lerg', lumbound=True, logmaxmass=(mcut+dlogM))
+                lftype='agn', lumbound=True, logmaxmass=(mcut+dlogM))
         lzrg_ratios.append([min_ratio, max_ratio])
 
 
@@ -827,15 +804,15 @@ def halopower_ratio(useHOD=False, sigM=0.5, dlogM=0.5):
     dndz_hzrg = read_pickle('results/dndz/hzrg.pickle')
     chain = read_pickle('results/hod/hzrg.pickle')['chain']
     chain = chain[-100:]
-    for mcut in mass_cut_grid:
+    for j in range(len(mass_cut_grid)-1):
 
         if useHOD:
 
-            min_ratio, max_ratio = lumfunc.jet_wind_power_ratio_hoddraws(
-                zrangeqso=(params.hzrg_minzphot, 2.5),
-                logminmass_cut=mcut, rg_dndz_or_zrange=dndz_hzrg,
-                hoddraws=chain, f_or_l_min=params.hzrg_fluxcut, f_or_l_max=params.hzrg_maxflux,
-                lftype='agn', lumbound=False, logmaxmass=(mcut+dlogM))
+            min_ratio, max_ratio = lumfunc.jet_wind_power_ratio_hod(
+                zrangeqso=(params.hzrg_minzphot, 2.),
+                logminmass_cut=mass_cut_grid[j], rg_dndz_or_zrange=dndz_hzrg,
+                hoddict=hoddict, f_or_l_min=params.hzrg_fluxcut, f_or_l_max=params.hzrg_maxflux,
+                lftype='agn', lumbound=False, logmaxmass=mass_cut_grid[j+1])
         else:
             min_ratio, max_ratio = lumfunc.jet_wind_power_ratio_frombias(
                 zrangeqso=(params.hzrg_minzphot, 2.5),
@@ -845,6 +822,7 @@ def halopower_ratio(useHOD=False, sigM=0.5, dlogM=0.5):
                 lftype='agn', lumbound=False, logmaxmass=(mcut+dlogM))
         hzrg_ratios.append([min_ratio, max_ratio])
     hzrg_ratios = np.array(hzrg_ratios)
+    mass_cut_grid = mass_cut_grid[:-1] + (mass_cut_grid[1]-mass_cut_grid[0])/2
     results.halopower_ratios(mcut_grid=mass_cut_grid, lzrgs=lzrg_ratios, izrgs=izrg_ratios, hzrgs=hzrg_ratios)
     """qsofitnames = sorted(glob.glob('results/fits/tomo/rg_qso*.pickle'))
     fits = []

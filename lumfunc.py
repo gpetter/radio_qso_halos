@@ -247,7 +247,7 @@ def dens_above_cut_stepfunc_hod_z(z, hod_logminmass, logmass_integral_bound, sig
     mgrid, hod = mgrid[above_bound], hod[above_bound]
     return hubbleunits.add_h_to_density(np.trapz(hod * cosmo.hmf_z(np.log10(mgrid), z), x=np.log(mgrid)))
 
-def dens_above_cut_hodparams_z(z, hodparams, logmass_integral_bound, logmaxmass=16.):
+def dens_above_cut_hod_z(z, hod, logmass_integral_bound, logmaxmass=16.):
     """
     Integrate HOD*HMF between mass bounds for any given Zheng HOD
     to get the density of galaxies in halos more between mass bounds
@@ -256,11 +256,10 @@ def dens_above_cut_hodparams_z(z, hodparams, logmass_integral_bound, logmaxmass=
     :param logmass_integral_bound:
     :return:
     """
-    from halomodelpy import hod_model
 
-    hod = hod_model.zheng_hod(hodparams, ['M', 'sigM', 'M1', 'alpha'])
-    mgrid = 10**hod['mgrid']
-    hod = hod['hod']
+    mgrid, hod = hod
+    hod[np.where(np.logical_not(np.isfinite(hod)))] = 0.
+    mgrid = 10**mgrid
     above_bound = np.where((np.log10(mgrid) >= logmass_integral_bound) & (np.log10(mgrid) <= logmaxmass))
     mgrid, hod = mgrid[above_bound], hod[above_bound]
     return hubbleunits.add_h_to_density(np.trapz(hod * cosmo.hmf_z(np.log10(mgrid), z), x=np.log(mgrid)))
@@ -289,14 +288,14 @@ def fraction_above_cut_stepfunc(dndz_or_zrange, hod_logminmass, logmass_integral
     return np.trapz(np.array(fracs)*dndz[1], x=dndz[0])
 
 
-def fraction_above_cut_hodparams(dndz_or_zrange, hodparams, logmass_integral_bound, logmaxmass=16.):
+def fraction_above_cut_hod(dndz_or_zrange, hod, logmass_integral_bound, logmaxmass=16.):
     dndz = parse_dndz_or_zrange(dndz_or_zrange)
     fracs = []
     for z in dndz[0]:
         fracs.append(
             (
-                    dens_above_cut_hodparams_z(z, hodparams, logmass_integral_bound, logmaxmass=logmaxmass) /
-                    dens_above_cut_hodparams_z(z, hodparams, logmass_integral_bound=11., logmaxmass=16.)
+                    dens_above_cut_hod_z(z, hod, logmass_integral_bound, logmaxmass=logmaxmass) /
+                    dens_above_cut_hod_z(z, hod, logmass_integral_bound=11., logmaxmass=16.)
             ))
     return np.trapz(np.array(fracs)*dndz[1], x=dndz[0])
 
@@ -361,7 +360,7 @@ def allheat_per_massive_halo(dndz_or_zrange, logminmass, f_or_l_min,
 
 
 
-def heat_per_massive_halo(dndz_or_zrange, hodparams, logminmass_cut, f_or_l_min, f_or_l_max=None,
+def heat_per_massive_halo(dndz_or_zrange, hod, logminmass_cut, f_or_l_min, f_or_l_max=None,
                     lftype='agn', avg_power=True, lumbound=True, logmaxmass=16.):
     """
     If a fraction of luminous RGs are in halos less massive than logminmass_cut, they aren't contributing heat
@@ -392,13 +391,13 @@ def heat_per_massive_halo(dndz_or_zrange, hodparams, logminmass_cut, f_or_l_min,
     heatperhalo_cut = allheat_per_massive_halo(dndz_or_zrange=dndz_or_zrange, logminmass=logminmass_cut,
                                             f_or_l_min=f_or_l_min, f_or_l_max=f_or_l_max, lftype=lftype,
                                             lumbound=lumbound, logmaxmass=logmaxmass)
-    if len(hodparams) == 2:
+    """if len(hodparams) == 2:
         frac_above_cut = fraction_above_cut_stepfunc(dndz_or_zrange=dndz_or_zrange, hod_logminmass=hodparams[0],
                                                 logmass_integral_bound=logminmass_cut, sigM=hodparams[1],
-                                                logmaxmass=logmaxmass)
-    else:
-        frac_above_cut = fraction_above_cut_hodparams(dndz_or_zrange=dndz_or_zrange, hodparams=hodparams,
-                                                      logmass_integral_bound=logminmass_cut, logmaxmass=logmaxmass)
+                                                logmaxmass=logmaxmass)"""
+
+    frac_above_cut = fraction_above_cut_hod(dndz_or_zrange=dndz_or_zrange, hod=hod,
+                                                logmass_integral_bound=logminmass_cut, logmaxmass=logmaxmass)
     return np.log10(frac_above_cut * elapsedtime * heatperhalo_cut)
 
 
@@ -421,7 +420,7 @@ def heat_per_massive_halo_frombias(dndz_or_zrange, bias_and_err, logminmass_cut,
     lo_err = power - lo_power
     return power, lo_err, up_err
 
-def heat_per_massive_halo_from_hod_draws(dndz_or_zrange, hoddraws, logminmass_cut, f_or_l_min, f_or_l_max=None,
+"""def heat_per_massive_halo_from_hod_draws(dndz_or_zrange, hoddict, logminmass_cut, f_or_l_min, f_or_l_max=None,
                                          lftype='agn', avg_power=True, lumbound=True, logmaxmass=16.):
     powers = []
     for j in range(len(hoddraws)):
@@ -431,8 +430,16 @@ def heat_per_massive_halo_from_hod_draws(dndz_or_zrange, hoddraws, logminmass_cu
     power = np.median(powers)
     up_err = np.percentile(powers, 84) - power
     lo_err = power - np.percentile(powers, 16)
-    return power, lo_err, up_err
-
+    return power, lo_err, up_err"""
+def heat_per_massive_halo_from_hod(dndz_or_zrange, hoddict, logminmass_cut, f_or_l_min, f_or_l_max=None,
+                                         lftype='agn', avg_power=True, lumbound=True, logmaxmass=16.):
+    heat1 = heat_per_massive_halo(dndz_or_zrange=dndz_or_zrange, hod=(hoddict['mgrid'], hoddict['hod_hi']),
+                                      logminmass_cut=logminmass_cut, f_or_l_min=f_or_l_min, f_or_l_max=f_or_l_max,
+                                      lftype=lftype, avg_power=avg_power, lumbound=lumbound, logmaxmass=logmaxmass)
+    heat2 = heat_per_massive_halo(dndz_or_zrange=dndz_or_zrange, hod=(hoddict['mgrid'], hoddict['hod_lo']),
+                                  logminmass_cut=logminmass_cut, f_or_l_min=f_or_l_min, f_or_l_max=f_or_l_max,
+                                  lftype=lftype, avg_power=avg_power, lumbound=lumbound, logmaxmass=logmaxmass)
+    return heat1, heat2
 
 
 def dutycycle_from_bias(dndz_or_zrange, bias_and_err, f_or_l_min, f_or_l_max=None, lftype='agn', lumbound=True):
@@ -594,19 +601,27 @@ def qso_windheatperhalo(zrange, logminmass, kinetic_frac=0.005, power=True, logm
     #windpower = qso_windheatperhalo(zrange=zrangeqso, logminmass=logminmass, kinetic_frac=kinetic_frac)
     #heat_per_massive_halo_frombias(dndz_or_zrange=rg_dndz_or_zrange, bias_and_err=bias_and_err)
 
-def jet_wind_power_ratio_hoddraws(zrangeqso, logminmass_cut, rg_dndz_or_zrange, hoddraws, f_or_l_min, f_or_l_max=None,
+def jet_wind_power_ratio_hod(zrangeqso, logminmass_cut, rg_dndz_or_zrange, hoddict, f_or_l_min, f_or_l_max=None,
                                   lftype='agn', lumbound=True, min_kinfrac=0.001, max_kinfrac=0.005,
                                   logmaxmass=16.):
-    heat, loerr, hierr = heat_per_massive_halo_from_hod_draws(dndz_or_zrange=rg_dndz_or_zrange, hoddraws=hoddraws,
+    #heat, loerr, hierr = heat_per_massive_halo_from_hod_draws(dndz_or_zrange=rg_dndz_or_zrange, hoddraws=hoddraws,
+    #                                     logminmass_cut=logminmass_cut, f_or_l_min=f_or_l_min, f_or_l_max=f_or_l_max,
+    #                                     lftype=lftype, lumbound=lumbound, logmaxmass=logmaxmass)
+    heat1, heat2 = heat_per_massive_halo_from_hod(dndz_or_zrange=rg_dndz_or_zrange, hoddict=hoddict,
                                          logminmass_cut=logminmass_cut, f_or_l_min=f_or_l_min, f_or_l_max=f_or_l_max,
                                          lftype=lftype, lumbound=lumbound, logmaxmass=logmaxmass)
     max_wind = qso_windheatperhalo(zrange=zrangeqso, logminmass=logminmass_cut, kinetic_frac=max_kinfrac,
                                    logmaxmass=logmaxmass)
     min_wind = qso_windheatperhalo(zrange=zrangeqso, logminmass=logminmass_cut, kinetic_frac=min_kinfrac,
                                    logmaxmass=logmaxmass)
+    minheat = np.min([heat1, heat2])
+    maxheat = np.max([heat1, heat2])
+    min_ratio = 10**maxheat / 10** min_wind
+    max_ratio = 10**minheat / 10**max_wind
 
-    max_ratio = 10 ** (heat + hierr) / 10 ** min_wind
-    min_ratio = 10 ** (heat - loerr) / 10 ** max_wind
+    #max_ratio = 10 ** (heat + hierr) / 10 ** min_wind
+    #min_ratio = 10 ** (heat - loerr) / 10 ** max_wind
+
 
     return min_ratio, max_ratio
 
