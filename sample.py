@@ -17,33 +17,18 @@ apcosmo = cosmo.toAstropy()
 freq_dict = {'LoLSS_DR1': 54, 'LOTSS_DR2': 144, 'Apertif': 1355, 'FIRST': 1400, 'VLASS': 3000}
 rms_dict = {'LOTSS_DR2': 0.15, 'FIRST': 0.15}
 
-# Equation 1 in Hardcastle 2018 or Shimwell 2018
-# determines whether radio source is resolved or not
-def lofar_resolved(catalog):
-	rms_map = hp.read_map('masks/LOTSS_DR2_rms.fits')
-	rms = rms_map[hp.ang2pix(nside=hp.npix2nside(len(rms_map)), theta=catalog['RA'], phi=catalog['DEC'], lonlat=True)]
-	resolved = catalog['F_144'] / catalog['PeakF_144'] > \
-			   (1.25 + 3.1 * (catalog['PeakF_144'] / catalog['PeakFerr_144']) ** (-0.53))
-	catalog['Resolved'] = np.zeros(len(catalog))
-	catalog['Resolved'][np.where(resolved)] = 1.
-	return catalog
 
-def lotss_dr2resolved(catalog):
-	catalog['Resolved'] = np.zeros(len(catalog))
-	resolved = np.log(catalog['F_144'] / catalog['PeakF_144']) > 0.42 + (1.08 /
-									(1 + ((catalog['F_144'] / catalog['Ferr_144'])/96.57) ** 2.49))
-	catalog['Resolved'][resolved] = 1.
-	return catalog
 
-def physical_size(angsizes, zs):
-	from colossus.cosmology import cosmology
-	cosmo = cosmology.setCosmology('planck18')
-	apcosmo = cosmo.toAstropy()
-	ang_diam_dists = apcosmo.angular_diameter_distance(zs).to(u.kpc).value
-	phys_sizes = (angsizes * u.arcsec).to(u.rad) * ang_diam_dists
-	return phys_sizes
+
+
+
 
 def legacysurvey_mask(syst_label):
+	"""
+		Read in angular systematics map produced by DESI (Myers+23)
+		:param syst_label:
+		:return:
+	"""
 	pixweight = Table.read('/home/graysonpetter/ssd/Dartmouth/data/desi_targets/syst_maps/pixweight-1-dark.fits')
 	systmap = np.empty(hp.nside2npix(256))
 	systmap[hp.nest2ring(256, pixweight['HPXPIXEL'])] = pixweight['%s' % syst_label]
@@ -54,11 +39,22 @@ def legacysurvey_mask(syst_label):
 	return systmap
 
 def in_cmblensingmask(ras, decs):
+	"""
+	Filter coordinates inside Planck CMB lensing mask, works as an effective mask of the Galactic plane
+	:return:
+	"""
 	lensmask = hp.read_map('/home/graysonpetter/ssd/Dartmouth/data/lensing_maps/PlanckPR4/derived/1024/mask.fits')
 	return lensmask[hp.ang2pix(nside=hp.npix2nside(len(lensmask)), theta=ras, phi=decs, lonlat=True)] == 1
 
 
 def in_lotss_dr2(ras, decs, northonly=True):
+	"""
+	Filter coordinates to inside LoTSS DR2 footprint
+	:param ras: right ascension array (deg)
+	:param decs: declination array (deg)
+	:param northonly: bool, only use footprint in North Galactic Cap
+	:return:
+	"""
 	moc = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
 	inmoc = moc.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
 
@@ -74,12 +70,16 @@ def in_lotss_dr2(ras, decs, northonly=True):
 
 	return good_idxs
 
-def cat_in_lotss(cat):
-	return cat[in_lotss_dr2(cat['RA'], cat['DEC'])]
+
 
 
 def in_ls_dr8(ra, dec):
-	import astropy.units as u
+	"""
+	Filter coordinates inside Legacy Survey DR8 footprint, since we are using photo-z
+	:param ra:
+	:param dec:
+	:return:
+	"""
 	northfoot = MOC.load('../data/footprints/legacySurvey/dr8_photoz_duncan/desi_lis_dr8_pzn.rcf.moc.fits')
 	southfoot = MOC.load('../data/footprints/legacySurvey/dr8_photoz_duncan/desi_lis_dr8_pzs.rcf.moc.fits')
 	# for some reason there are patches where Duncan doesn't provide photo zs, identified by hand
@@ -104,12 +104,17 @@ def in_ls_dr8(ra, dec):
 
 	return infoot
 
-def cat_in_ls_dr8(t):
-	infoot = in_ls_dr8(t['RA'], t['DEC'])
-	return t[infoot]
+
 
 
 def in_eboss(ras, decs, northonly=True):
+	"""
+	Filter coordinates in eBOSS quasar footprint
+	:param ras:
+	:param decs:
+	:param northonly:
+	:return:
+	"""
 
 	ebossmoc = pymangle.Mangle('../data/footprints/eBOSS/eBOSS_QSOandLRG_fullfootprintgeometry_noveto.ply')
 	good_idxs = ebossmoc.contains(ras, decs)
@@ -118,8 +123,7 @@ def in_eboss(ras, decs, northonly=True):
 		good_idxs = good_idxs & innorth
 	return good_idxs
 
-def cat_in_eboss(cat):
-	return cat[in_eboss(cat['RA'], cat['DEC'])]
+
 
 
 
@@ -136,30 +140,37 @@ def in_boss(ras, decs):
 	return good_idxs
 
 
-def cat_in_boss(cat):
-	return cat[in_boss(cat['RA'], cat['DEC'])]
 
 
-def in_vlass_epoch2(ras, decs):
-	moc1 = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/footprints/VLASS/vlass_2.1.moc.fits')
-	moc2 = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/footprints/VLASS/vlass_2.2.moc.fits')
 
-	good_idxs = moc1.contains(np.array(ras) * u.deg, np.array(decs) * u.deg) | \
-				moc2.contains(np.array(ras) * u.deg, np.array(decs) * u.deg)
-	return good_idxs
 
 def in_goodwise(ras, decs):
+	"""
+	Filter coordinates inside footprint where WISE depth is complete to some limit
+	:param ras:
+	:param decs:
+	:return:
+	"""
 	w2depth = hp.read_map('masks/wisedepth.fits')
 	depths = w2depth[hp.ang2pix(hp.npix2nside(len(w2depth)), ras, decs, lonlat=True)]
 	return (depths > 17.3)
 
-def cat_in_goodwise(cat):
-	return cat[in_goodwise(cat['RA'], cat['DEC'])]
+
 
 
 
 
 def outside_galaxy(ras, decs, galcut=0, betacut=90, ebvcut=0.1, stardenscut=2000.):
+	"""
+	Filter coordinates by galactic/ecliptic cuts, or reddening, stellar density cuts
+	:param ras:
+	:param decs:
+	:param galcut:
+	:param betacut:
+	:param ebvcut:
+	:param stardenscut:
+	:return:
+	"""
 	stardens = hp.read_map('masks/stardens.fits')
 	ebv = hp.read_map('masks/ebv.fits')
 
@@ -175,10 +186,29 @@ def outside_galaxy(ras, decs, galcut=0, betacut=90, ebvcut=0.1, stardenscut=2000
 	goodebv = (ebvs < ebvcut)
 	return goodebv & gooddens & goodbs & goodbetas
 
+
 def cat_outside_galaxy(cat, galcut=0, betacut=90, ebvcut=0.1, stardenscut=2000.):
 	cat = cat[outside_galaxy(cat['RA'], cat['DEC'],
 							 galcut=galcut, betacut=betacut, ebvcut=ebvcut, stardenscut=stardenscut)]
 	return cat
+
+
+def cat_in_lotss(cat):
+	return cat[in_lotss_dr2(cat['RA'], cat['DEC'])]
+
+
+def cat_in_ls_dr8(t):
+	infoot = in_ls_dr8(t['RA'], t['DEC'])
+	return t[infoot]
+
+def cat_in_eboss(cat):
+	return cat[in_eboss(cat['RA'], cat['DEC'])]
+
+def cat_in_goodwise(cat):
+	return cat[in_goodwise(cat['RA'], cat['DEC'])]
+
+def cat_in_boss(cat):
+	return cat[in_boss(cat['RA'], cat['DEC'])]
 
 
 def in_goodclustering_area(ra, dec):
@@ -192,7 +222,7 @@ def cat_in_goodclustering_area(cat):
 	return cat
 
 
-"""def lotss_randoms():
+def gen_lotss_randoms():
 	from SkyTools import random_catalogs
 	randra, randdec = random_catalogs.uniform_sphere(1000, density=True, lat_range=(15, 90))
 	rand = Table()
@@ -200,7 +230,7 @@ def cat_in_goodclustering_area(cat):
 	rand['DEC'] = randdec
 	rand['weight'] = np.ones(len(rand))
 	rand = cat_in_goodclustering_area(rand)
-	return rand"""
+	return rand
 
 def lotss_randoms(nrand):
 	"""
@@ -231,112 +261,6 @@ def rg_mask(nside):
 	idx = in_goodclustering_area(ra, dec)
 	mask[idx] = 1.
 	return mask
-
-
-
-
-	
-	
-
-
-def overlap_weights_1d(prop_arr, prop_range, nbins):
-	hists = []
-	for j in range(len(prop_arr)):
-		hist, binedges = np.histogram(prop_arr[j], bins=nbins, range=prop_range, density=True)
-		hists.append(hist)
-	hists = np.array(hists)
-	min_hist = np.amin(hists, axis=0)
-	weights = []
-	for j in range(len(prop_arr)):
-		dist_ratio = min_hist / hists[j]
-		dist_ratio[np.where(np.isnan(dist_ratio) | np.isinf(dist_ratio))] = 0
-		weights.append(dist_ratio[np.digitize(prop_arr[j], bins=binedges)-1])
-	return weights
-
-
-
-def overlap_weights_2d(prop1_arr, prop2_arr, prop1_range, prop2_range, nbins):
-	from scipy import stats, interpolate
-	hists, bin_locs = [], []
-
-	for j in range(len(prop1_arr)):
-		thishist = stats.binned_statistic_2d(prop1_arr[j], prop2_arr[j], None, statistic='count',
-											 bins=[nbins[0], nbins[1]],
-											 range=[[prop1_range[0] - 0.001, prop1_range[1] + 0.001],
-													[prop2_range[0] - 0.001, prop2_range[1] + 0.001]],
-											 expand_binnumbers=True)
-		normed_hist = thishist[0] / np.sum(thishist[0])
-		hists.append(normed_hist)
-		bin_locs.append(np.array(thishist[3]) - 1)
-
-	hists = np.array(hists)
-	min_hist = np.amin(hists, axis=0)
-	weights = []
-
-	for j in range(len(prop1_arr)):
-		dist_ratio = min_hist / hists[j]
-		dist_ratio[np.where(np.isnan(dist_ratio) | np.isinf(dist_ratio))] = 0
-		bin_idxs = bin_locs[j]
-		weights.append(dist_ratio[bin_idxs[0], bin_idxs[1]])
-	return weights
-
-
-def match_random_zdist(samplecat, randomcat, nbins=15):
-	zhist, edges = np.histogram(samplecat['Z'], bins=nbins, range=(0.7, 2.3), density=True)
-	randhist, edges = np.histogram(randomcat['Z'], bins=nbins, range=(0.7, 2.3), density=True)
-	ratio = zhist/randhist
-	sampleweights = ratio[np.digitize(randomcat['Z'], bins=edges) - 1]
-	subrandcat = randomcat[np.random.choice(len(randomcat), size=(10*len(samplecat)), replace=False, p=(sampleweights / np.sum(sampleweights)))]
-	return subrandcat
-
-def weight_common_dndz(cat1, cat2, zbins=15):
-	minz1, maxz1 = np.min(cat1['Z']), np.max(cat1['Z'])
-	minz2, maxz2 = np.min(cat2['Z']), np.max(cat2['Z'])
-	minz = np.min([minz1, minz2])
-	maxz = np.max([maxz1, maxz2])
-	zhist1, edges = np.histogram(cat1['Z'], bins=zbins, range=(minz, maxz), density=True)
-	zhist2, edges = np.histogram(cat2['Z'], bins=zbins, range=(minz, maxz), density=True)
-	dndz_product = np.sqrt(zhist1 * zhist2)
-	ratio1 = zhist1/dndz_product
-	ratio2 = zhist2/dndz_product
-	cat1['zweight'] = ratio1[np.digitize(cat1['Z'], bins=edges) - 1]
-	cat2['zweight'] = ratio2[np.digitize(cat2['Z'], bins=edges) - 1]
-	cat1['weight'] *= cat1['zweight']
-	cat2['weight'] *= cat1['zweight']
-	return cat1, cat2
-
-
-def select_radioloud(radio_name, fcut, cat, randcat, detect_thresh=6.):
-	freq = freq_dict[radio_name]
-	cat = cat[np.where(cat['det_%s' % freq] > -1)]
-	radiocat = cat[np.where((cat['F_%s' % freq] > fcut) & (cat['det_%s' % freq] == 1))]
-	radioquiet = cat[np.where((cat['det_%s' % freq] == 0) | (cat['F_%s' % freq] < fcut))]
-	randcat = randcat[np.where(randcat['in_%s' % freq] == 1)]
-	rmsmap = hp.read_map('masks/%s_rms.fits' % radio_name)
-	cat = cat[np.where(myhp.coords2mapvalues(cat['RA'], cat['DEC'], rmsmap) < (fcut / detect_thresh))]
-	radiocat = radiocat[np.where(myhp.coords2mapvalues(radiocat['RA'], radiocat['DEC'], rmsmap) <
-								 (fcut / detect_thresh))]
-	randcat = randcat[np.where(myhp.coords2mapvalues(randcat['RA'], randcat['DEC'], rmsmap) < (fcut / detect_thresh))]
-	return radiocat, radioquiet, cat, randcat
-
-
-def rolling_percentile_selection(cat, prop, minpercentile, maxpercentile=100, nzbins=100):
-	"""
-	choose highest nth percentile of e.g. luminosity in bins of redshift
-	"""
-	minz, maxz = np.min(cat['Z']), np.max(cat['Z'])
-	zbins = np.linspace(minz, maxz, nzbins)
-	idxs = []
-	for j in range(len(zbins)-1):
-		catinbin = cat[np.where((cat['Z'] > zbins[j]) & (cat['Z'] <= zbins[j+1]))]
-		thresh = np.percentile(catinbin[prop], minpercentile)
-		hithresh = np.percentile(catinbin[prop], maxpercentile)
-		idxs += list(np.where((cat[prop] > thresh) & (cat[prop] <= hithresh) &
-							  (cat['Z'] > zbins[j]) & (cat['Z'] <= zbins[j+1]))[0])
-
-	newcat = cat[np.array(idxs)]
-	return newcat
-
 
 
 
@@ -546,12 +470,11 @@ def total_clustering_sample():
 
 
 def noz_rg_sample(fcut=2., sep_cw=7, w2cut=17.5, maxflux=1000, majmax=15):
-	from SkyTools import fluxutils
+
 	lotss = Table.read('catalogs/LoTSS.fits')
 	lotss = cat_in_goodclustering_area(lotss)
 	lotss = lotss[np.where(lotss['Total_flux'] < maxflux)]
 	lotss = lotss[np.where(lotss['Maj'] < majmax)]
-	#lotss = lotss[np.where((lotss['Jmag'].mask == True) | (np.array(lotss['Jmag'], dtype=float) > jcut) | (lotss['sep_2mass'] > sep_2mass))]
 
 	lotss = lotss[np.where((lotss['sep_cw'] > sep_cw) | (np.logical_not(np.isfinite(lotss['sep_cw']))))]
 	lotss = lotss[np.where((lotss['W2_cw'] > w2cut) | (np.logical_not(np.isfinite(lotss['W2_cw']))))]
@@ -582,118 +505,14 @@ def match2combined(cat, sep, stack=False):
 	return comb
 
 
-def rg_redshifts():
-	from SkyTools import get_redshifts
-	rgs = lotss_rg_sample()
-	rgs = get_redshifts.match_to_spec_surveys(rgs, seplimit=3)
-	rgs.write('catalogs/rgs_specz.fits', overwrite=True)
-
-"""def treat_dndz_pdf(cat, sep=2., ndraws=100, bootesonly=False):
-
-	if bootesonly:
-		photcat = match2bootes(cat, sep=sep)
-	else:
-		photcat = match2combined(cat, sep=sep)
-	maxpossiblez = 3.
-	# objects with spec-zs
-	specs = photcat[np.where((photcat['f_zbest'] == 1) | (photcat['hasz'] == 1))]
-	# with only photo-zs
-	photcat = photcat[np.where((photcat['f_zbest'] == 0) & (photcat['hasz'] == 0))]
-
-	# throwing out systems with uninformative PDFS
-	# require positive minimum bound
-	photcat = photcat[np.where(
-							((photcat['z1min'] > 0.1) & ((photcat['z2min'] > 0.1) | (photcat['z2min'] < -50)))
-							)]
-	photcat = photcat[np.where(
-		(photcat['z1med'] > 0.8) | ((photcat['z1med'] - photcat['z1min']) < 0.1)
-	)]
-	# require reasonable maximum bound
-	photcat = photcat[np.where(
-							((photcat['z1max'] < maxpossiblez) & ((photcat['z2max'] < maxpossiblez)))
-							)]
-	# throw out things with very broad PDFs
-	#photcat = photcat[np.where(
-	#						((photcat['z1max']-photcat['z1med']) < 1) & ((((photcat['z1med']-photcat['z1min']) < 0.3)) |
-	#																	 (photcat['z1med'] > 1))
-	#						)]
-	#photcat = photcat[np.where(
-	#	(photcat['z2med'] < -50) |
-	#	(((photcat['z2max'] - photcat['z2med']) < 0.3) & ((photcat['z2med'] - photcat['z2min']) < 0.3))
-	#)]
 
 
-
-
-	# systems where there is only one peak in the photoz PDF
-	singlephots = photcat[np.where(photcat['z2med'] == -99)]
-	# sources where there are two peaks
-	doublephots = photcat[np.where(photcat['z2med'] > 0)]
-
-
-	speczs = list(np.repeat(specs['z_best'], ndraws))
-	#specweights = list(ndraws*np.ones_like(speczs))
-
-	singlezs, singleweights = [], []
-	for j in range(len(singlephots)):
-		thisrow = singlephots[j]
-		# Duncan is reporting  bounds of 80% confidence interval
-		uperr = (thisrow['z1max'] - thisrow['z1med']) / 1.3
-		loerr = (thisrow['z1med'] - thisrow['z1min']) / 1.3
-		weight = thisrow['z1area']
-
-		b = np.random.normal(loc=thisrow['z1med'], scale=uperr, size=ndraws)
-		above = b[np.where(b > thisrow['z1med'])]
-		c = np.random.normal(loc=thisrow['z1med'], scale=loerr, size=ndraws)
-		below = c[np.where((c > 0) & (c < thisrow['z1med']))]
-		tot = np.concatenate((above, below))
-		try:
-			singlezs += list(np.random.choice(tot, int(weight * ndraws), replace=False))
-		except:
-			pass
-
-
-	doublezs1, doublezs2, doubleweights1, doubleweights2 = [], [], [], []
-	for j in range(len(doublephots)):
-		thisrow = doublephots[j]
-		uperr = (thisrow['z1max'] - thisrow['z1med']) / 1.3
-		loerr = (thisrow['z1med'] - thisrow['z1min']) / 1.3
-		weight = thisrow['z1area']
-		if thisrow['z1med'] < maxpossiblez:
-
-			b = np.random.normal(loc=thisrow['z1med'], scale=uperr, size=ndraws)
-			above = b[np.where(b > thisrow['z1med'])]
-			c = np.random.normal(loc=thisrow['z1med'], scale=loerr, size=ndraws)
-			below = c[np.where((c > 0) & (c < thisrow['z1med']))]
-			tot1 = np.concatenate((above, below))
-			try:
-				doublezs1 += list(np.random.choice(tot1, int(weight * ndraws), replace=False))
-			except:
-				pass
-
-		uperr = (thisrow['z2max'] - thisrow['z2med']) / 1.3
-		loerr = (thisrow['z2med'] - thisrow['z2min']) / 1.3
-		weight = thisrow['z2area']
-
-		if thisrow['z2med'] < maxpossiblez:
-
-			b = np.random.normal(loc=thisrow['z2med'], scale=uperr, size=ndraws)
-			above = b[np.where(b > thisrow['z2med'])]
-			c = np.random.normal(loc=thisrow['z2med'], scale=loerr, size=ndraws)
-			below = c[np.where((c > 0) & (c < thisrow['z2med']))]
-			tot2 = np.concatenate((above, below))
-			try:
-				doublezs2 += list(np.random.choice(tot2, int(weight * ndraws), replace=False))
-			except:
-				pass
-
-
-	finalzs = np.array(speczs + singlezs + doublezs1 + doublezs2)
-	return finalzs"""
 
 def treat_dndz_pdf(cat, sep=2., minz=0.1, maxz=3.):
 	"""
-	Infer redshift distribution from photo-zs
+	Infer redshift distribution from Duncan+21 photo-z "PDFs"
+	Given are first two peaks in redshift PDF, with medians, 80% confidence intervals and associated areas
+	this will attempt to reconstruct full dn/dz of a sample, by bootstrapping
 	:param cat:
 	:param sep:
 	:return:
@@ -706,12 +525,16 @@ def treat_dndz_pdf(cat, sep=2., minz=0.1, maxz=3.):
 	phot = match[np.where((match['f_zbest'] == 0) & (match['hasz'] == 0))]
 
 
+	# remove bad estimates, here we are assuming galaxies at z>3 are infeasible to detect with WISE
 	phot = phot[(phot['z1min'] > minz) & (phot['z1med'] > minz) & (phot['z1max'] < maxz) & (phot['z1med'] < maxz)]
 
 	z1med, z1min, z1max = phot['z1med'], phot['z1min'], phot['z1max']
 	z1med_weight = phot['z1area']
+	# Duncan quotes 80% confidence interval, corresponds to 1.28 sigma
+	# chance of drawing a min or max bound should be weighted down by G(1.28)/G(0)
 	z1min_weight = phot['z1area'] * norm.pdf(1.28) / norm.pdf(0)
 
+	# set with a measured second peak
 	withz2 = phot[(phot['z2min'] > minz) & (phot['z2med'] > minz) & (phot['z2max'] < maxz) & (phot['z2med'] < maxz)]
 	frac_withz2 = len(withz2) / len(phot)
 
@@ -719,10 +542,12 @@ def treat_dndz_pdf(cat, sep=2., minz=0.1, maxz=3.):
 	z2med_weight = frac_withz2 * withz2['z2area']
 	z2min_weight = frac_withz2 * withz2['z2area'] * norm.pdf(1.28) / norm.pdf(0)
 
+
 	zs = np.concatenate((z1med, z1min, z1max, z2med, z2min, z2max))
 	zweight = np.concatenate((z1med_weight, z1min_weight, z1min_weight, z2med_weight, z2min_weight, z2min_weight))
 	zweight /= np.sum(zweight)
 
+	# randomly draw from phot-z medians, mins and maxes for first two peaks, weighted appopriately
 	drawn_photz = np.random.choice(zs, 10000, replace=True, p=zweight)
 
 	frac_with_spec = len(specs) / len(phot)
@@ -733,6 +558,11 @@ def treat_dndz_pdf(cat, sep=2., minz=0.1, maxz=3.):
 	return allzs
 
 def savgol_dndz(dndz):
+	"""
+	Smooth redshift distribution with a linear Savitsky-Golay filter to smooth over aliasing "spikes"
+	:param dndz:
+	:return:
+	"""
 	from scipy.signal import savgol_filter
 	from halomodelpy import redshift_helper
 	smoothed = savgol_filter(dndz[1], int(len(dndz[1]) / 10.), polyorder=1)
@@ -744,6 +574,13 @@ def savgol_dndz(dndz):
 
 
 def redshift_dist(cat, sep=2., bootesonly=True):
+	"""
+	Get list of "best" redshift estimates for a given sample by matching to deep fields (Duncan+21, Best+23)
+	:param cat:
+	:param sep:
+	:param bootesonly:
+	:return:
+	"""
 	if bootesonly:
 		deepcat = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
 	else:
@@ -757,6 +594,11 @@ def redshift_dist(cat, sep=2., bootesonly=True):
 	return zs
 
 def get_dndz(cat):
+	"""
+	Estimate dn/dz for a given sample by directly taking histogram of "best" redshift estimates in deep fields
+	:param cat:
+	:return:
+	"""
 	zs = redshift_dist(cat)
 	dndz = redshift_helper.dndz_from_z_list(zs, nbins=params.nzbins, zrange=params.zbin_range)
 	# dont need beyond where dndz->0, chop off
@@ -769,6 +611,13 @@ def get_dndz(cat):
 
 
 def hzrg_dndz(hzrgcat, pdfs=True, bootesonly=False):
+	"""
+	As the high-z sample is mostly photo-z, worry about unphysical spikes in dn/dz, so smooth with a filter
+	:param hzrgcat:
+	:param pdfs:
+	:param bootesonly:
+	:return:
+	"""
 	if pdfs:
 		zs = treat_dndz_pdf(cat=hzrgcat, sep=2.)
 	else:

@@ -45,8 +45,8 @@ import params
 #measurements.hzrg_xcorr(rpscales=params.linscales)
 
 # 7. Fit autocorrelations with HOD
-#measurements.hodfit('lzrg', nwalkers=10, niter=5000,
-#                    freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13.25, 0.5, 14, .8])
+measurements.hodfit('lzrg', nwalkers=10, niter=500,
+                    freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13.25, 0.5, 14, .8])
 #measurements.hodfit('izrg', nwalkers=10, niter=5000,
 #                    freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13.25, 0.5, 14, .8])
 #measurements.hodfit('hzrg', nwalkers=10, niter=5000,
@@ -55,4 +55,4 @@ import params
 
 # 8. Energy injection
 #measurements.halopower(mcut=13.)
-measurements.halopower_ratio()
+#measurements.halopower_ratio()
