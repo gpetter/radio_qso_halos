@@ -7,21 +7,17 @@ import params
 
 
 
-#sample.total_clustering_sample()
-# Step 0, download Hardcastle+23 catalog, match to CatWISE2020
+# Step 0, download Hardcastle+23 catalog, match to CatWISE2020 (in TOPCAT is easiest)
+#prep_radio_data.prepfor_wisematch()
 
 # Step 1, make LoTSS catalog
-#prep_radio_data.prepfor_wisematch()
 #prep_radio_data.cut_duplicates()
 #prep_radio_data.make_legacysurvey_mask()
 #prep_radio_data.make_ls_depth_map()
 #prep_radio_data.make_bitmask_map()
-#prep_radio_data.make_wisemap()
-#prep_radio_data.make_stardensmap()
-#prep_radio_data.make_ebv_map()
 #prep_radio_data.prep_randoms()
 
-# 2. Create redshift samples, plot
+# 2. Create redshift samples, plot sample properties
 #radiogalaxy_sample.wisediagram()
 #radiogalaxy_sample.both_redshift_dist()
 #radiogalaxy_sample.lum_redshift()
@@ -45,14 +41,14 @@ import params
 #measurements.hzrg_xcorr(rpscales=params.linscales)
 
 # 7. Fit autocorrelations with HOD
-measurements.hodfit('lzrg', nwalkers=10, niter=500,
-                    freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13.25, 0.5, 14, .8])
+#measurements.hodfit('lzrg', nwalkers=10, niter=5000,
+#                    freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13.25, 0.5, #14, .8])
 #measurements.hodfit('izrg', nwalkers=10, niter=5000,
-#                    freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13.25, 0.5, 14, .8])
+#                    freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13.25, 0.5, #14, .8])
 #measurements.hodfit('hzrg', nwalkers=10, niter=5000,
-#                    freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 0.6, 15., 1.2])
+#                    freeparam_ids=['M', 'sigM', 'M1', 'alpha'], inital_params=[13, 0.6, 15., #1.2])
 
 
 # 8. Energy injection
 #measurements.halopower(mcut=13.)
-#measurements.halopower_ratio()
+measurements.halopower_ratio()

@@ -717,7 +717,7 @@ def halopower_ratio(useHOD=True, sigM=0.5, dlogM=0.1):
 
 
 
-    mass_cut_grid = np.linspace(12., 13.75, 10)
+    mass_cut_grid = np.linspace(12.25, 13.75, 8)
 
     izrgfit = read_pickle('results/fits/auto/izrg.pickle')
 

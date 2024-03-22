@@ -416,11 +416,11 @@ def corners(smooth=1, fsats=True):
     hodfile = read_pickle('results/hod/%s.pickle' % samps[0])
     chain = hodfile['chain']
     limits = [(12., 14.), (0., 1.), (12.5, 16.), (0., 2.), (-4, 0)]
-    labels = [r'log$_{10}M_{\mathrm{min}}$', r'$\sigma_{\mathrm{log}_{10}M}$', r'log$_{10}M_1$', r'$\alpha$']
+    labels = [r'log$M_{\mathrm{min}}$', r'$\sigma_{\mathrm{log}M}$', r'log$M_1$', r'$\alpha$']
     if fsats:
         #dndz = read_pickle('results/dndz/%s.pickle' % samps[0])
         chain = np.insert(chain, 4, np.log10(hodfile['fsat_chain']), 1)
-        labels.append(r'log$_{10}f_{\mathrm{sat}}$')
+        labels.append(r'log$ratf_{\mathrm{sat}}$')
 
     fig = corner.corner(chain, color=lowc, alpha=0.3, smooth=smooth, labels=labels,
                         plot_datapoints=False, levels=(1 - np.exp(-0.5), 1 - np.exp(-2)),
@@ -490,7 +490,8 @@ def hods():
             fig, ax2 = plt.subplots(figsize=(8,7))
         plt.xlabel(r'log$(\mathrm{Halo \ mass} \ [h^{-1} M_{\odot}])$')
         plt.xlim(12, 14.5)
-        ax2.set_ylim(3e-3, 5e0)
+        #ax2.set_ylim(3e-3, 5e0)
+        ax2.set_ylim(1e-4, 5e0)
         ax2.set_yscale('log')
         plt.ylabel(r'Number per halo $\langle N(M_h) \rangle$')
 
@@ -499,6 +500,7 @@ def hods():
             linfit = read_pickle('results/fits/auto/%s.pickle' % samp)
             fduty = linfit['fduty']
             lobounds, upbounds = fduty*hodpickle['hod_lo'], fduty*hodpickle['hod_hi']
+            lobounds[np.where(np.logical_not(np.isfinite(lobounds)))] = 0.
             mgrid = hodpickle['mgrid']
 
             ax2.fill_between(mgrid, lobounds, upbounds, color=color_dict[samp],
@@ -728,18 +730,35 @@ def avghalopower(lzrgs, izrgs, hzrgs, qsowindinfo):
 
 def halopower_ratios(mcut_grid, lzrgs, izrgs, hzrgs):
     fig, ax = plt.subplots(figsize=(8, 7))
+    from scipy.signal import savgol_filter
+    applyfilter=True
+    lzrg_lo, lzrg_hi = lzrgs[:, 0], lzrgs[:, 1]
+    izrg_lo, izrg_hi = izrgs[:, 0], izrgs[:, 1]
+    hzrg_lo, hzrg_hi = hzrgs[:, 0], hzrgs[:, 1]
+    if applyfilter:
+        filtwide = 2
+        lzrg_lo = 10**savgol_filter(np.log10(lzrgs[:, 0]), filtwide, 1)
+        lzrg_hi = 10**savgol_filter(np.log10(lzrgs[:, 1]), filtwide, 1)
 
-    ax.fill_between(mcut_grid, lzrgs[:, 0], lzrgs[:, 1], color=lowc, alpha=0.2, edgecolor='none',
+        izrg_lo = 10 ** savgol_filter(np.log10(izrgs[:, 0]), filtwide, 1)
+        izrg_hi = 10 ** savgol_filter(np.log10(izrgs[:, 1]), filtwide, 1)
+
+        hzrg_lo = 10 ** savgol_filter(np.log10(hzrgs[:, 0]), filtwide, 1)
+        hzrg_hi = 10 ** savgol_filter(np.log10(hzrgs[:, 1]), filtwide, 1)
+
+
+    ax.fill_between(mcut_grid, lzrg_lo, lzrg_hi,
+                    color=lowc, alpha=0.2, edgecolor='none',
                     label=r'$%s < z < %s$' % (params.lzrg_minzphot, params.lzrg_maxzphot))
-    ax.fill_between(mcut_grid, izrgs[:, 0], izrgs[:, 1], color=midc, alpha=0.2, edgecolor='none',
+    ax.fill_between(mcut_grid, izrg_lo, izrg_hi, color=midc, alpha=0.2, edgecolor='none',
                     label=r'$0.5 < z < %s$' % params.izrg_maxzphot)
-    ax.fill_between(mcut_grid, hzrgs[:, 0], hzrgs[:, 1], color=hic, alpha=0.2, edgecolor='none',
+    ax.fill_between(mcut_grid, hzrg_lo, hzrg_hi, color=hic, alpha=0.2, edgecolor='none',
                     label=r'$1 < z < 2$')
 
     ax.axhline(1., c='k', ls='--')
     ax.set_xlabel(r'log(Halo mass $[h^{-1} M_{\odot}]$)')
     ax.set_yscale('log')
-    ax.set_ylabel(r'$\langle$ Jet-heating power $\rangle$ /  $\langle$ QSO wind-heating power $\rangle$')
+    ax.set_ylabel(r'$\langle$ Jet-heating power $\rangle$ /  $\langle$ QSO wind-heating power $\rangle$', fontsize=18)
     ax.set_ylim(1e-3, 5e3)
     ax.set_xlim(np.min(mcut_grid), np.max(mcut_grid))
 

@@ -151,7 +151,7 @@ def in_goodwise(ras, decs):
 	:param decs:
 	:return:
 	"""
-	w2depth = hp.read_map('masks/wisedepth.fits')
+	w2depth = legacysurvey_mask('PSFDEPTH_W2')
 	depths = w2depth[hp.ang2pix(hp.npix2nside(len(w2depth)), ras, decs, lonlat=True)]
 	return (depths > 17.3)
 
@@ -171,8 +171,8 @@ def outside_galaxy(ras, decs, galcut=0, betacut=90, ebvcut=0.1, stardenscut=2000
 	:param stardenscut:
 	:return:
 	"""
-	stardens = hp.read_map('masks/stardens.fits')
-	ebv = hp.read_map('masks/ebv.fits')
+	stardens = legacysurvey_mask('STARDENS')
+	ebv = legacysurvey_mask('EBV')
 
 	densities = stardens[hp.ang2pix(hp.npix2nside(len(stardens)), ras, decs, lonlat=True)]
 	ebvs = ebv[hp.ang2pix(hp.npix2nside(len(ebv)), ras, decs, lonlat=True)]

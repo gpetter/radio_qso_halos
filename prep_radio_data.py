@@ -103,28 +103,9 @@ def make_ls_depth_map():
     meddepth = healpixhelper.healpix_median_in_pixels(256, (rand['RA'], rand['DEC']), depths)
     hp.write_map('masks/LS_zdepth.fits', meddepth, overwrite=True)
 
-def make_wisemap():
-    pixweight = Table.read('/home/graysonpetter/ssd/Dartmouth/data/desi_targets/syst_maps/pixweight-1-dark.fits')
-    import healpy as hp
-    w2depth = np.empty(hp.nside2npix(256))
-    w2depth[hp.nest2ring(256, pixweight['HPXPIXEL'])] = pixweight['PSFDEPTH_W2']
-    w2depth = 22.5 - 2.5 * np.log10(5 / np.sqrt(w2depth)) - 3.339
-    #w2depth[np.where(np.logical_not(np.isfinite(w2depth)))] = 100.
-    hp.write_map('masks/wisedepth.fits', w2depth, overwrite=True)
 
-def make_stardensmap():
-    pixweight = Table.read('../data/desi_targets/syst_maps/pixweight-1-dark.fits')
 
-    stars = np.empty(hp.nside2npix(256))
-    stars[hp.nest2ring(256, pixweight['HPXPIXEL'])] = pixweight['STARDENS']
-    hp.write_map('masks/stardens.fits', stars, overwrite=True)
 
-def make_ebv_map():
-    pixweight = Table.read('../data/desi_targets/syst_maps/pixweight-1-dark.fits')
-
-    ebv = np.empty(hp.nside2npix(256))
-    ebv[hp.nest2ring(256, pixweight['HPXPIXEL'])] = pixweight['EBV']
-    hp.write_map('masks/ebv.fits', ebv, overwrite=True)
 
 def make_bitmask_map(nside=4096):
     randfiles = glob.glob('../data/randoms/ls/dr8/randoms-inside-dr8-0.31.0-*.fits')
@@ -208,6 +189,7 @@ def prep_randoms():
     moc = MOC.from_fits('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LOTSS_DR2/lotss_dr2_hips_moc.fits')
     inmoc = moc.contains(np.array(rand['RA']) * u.deg, np.array(rand['DEC']) * u.deg)
     rand = rand[inmoc]
+    rand = rand['RA', 'DEC', 'WISEMASK_W1', 'WISEMASK_W2']
     rand.write('catalogs/randoms_dr8.fits', overwrite=True)
 
 """
