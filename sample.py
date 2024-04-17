@@ -486,8 +486,7 @@ def noz_rg_sample(fcut=2., sep_cw=7, w2cut=17.5, maxflux=1000, majmax=15):
 
 def match2bootes(cat, sep, stack=False):
 	bootes = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
-	bootidx, catidx = coordhelper.match_coords((bootes['RA'], bootes['DEC']), (cat['RA'], cat['DEC']),
-											   max_sep=sep, symmetric=False)
+	catidx, bootidx = coordhelper.match_coords((cat['RA'], cat['DEC']), (bootes['RA'], bootes['DEC']), max_sep=sep)
 	bootes = bootes[bootidx]
 	if stack:
 		cat = cat[catidx]
@@ -496,8 +495,7 @@ def match2bootes(cat, sep, stack=False):
 
 def match2combined(cat, sep, stack=False):
 	comb = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/combined.fits')
-	idx, catidx = coordhelper.match_coords((comb['RA'], comb['DEC']), (cat['RA'], cat['DEC']),
-											   max_sep=sep, symmetric=False)
+	catidx, idx = coordhelper.match_coords((cat['RA'], cat['DEC']), (comb['RA'], comb['DEC']), max_sep=sep)
 	comb = comb[idx]
 	if stack:
 		cat = cat[catidx]
@@ -585,8 +583,7 @@ def redshift_dist(cat, sep=2., bootesonly=True):
 		deepcat = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/bootes.fits')
 	else:
 		deepcat = Table.read('/home/graysonpetter/ssd/Dartmouth/data/radio_cats/LoTSS_deep/classified/combined.fits')
-	bootidx, catidx = coordhelper.match_coords((deepcat['RA'], deepcat['DEC']), (cat['RA'], cat['DEC']),
-											   max_sep=sep, symmetric=False)
+	catidx, bootidx = coordhelper.match_coords((cat['RA'], cat['DEC']), (deepcat['RA'], deepcat['DEC']), max_sep=sep)
 	deepcat = deepcat[bootidx]
 	deepcat = deepcat[np.where(deepcat['z_best'] < 4)]
 	zs = deepcat['z_best']

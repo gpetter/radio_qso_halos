@@ -109,7 +109,7 @@ def hostgals():
 
     bootes = Table.read('../data/radio_cats/LoTSS_deep/classified/bootes.fits')
     bootes = bootes[np.where(bootes['z_best'] < 4)]
-    bootes, lotz = coordhelper.match_coords(bootes, lotz, 3., symmetric=False)
+    lotz, bootes = coordhelper.match_coords(lotz, bootes, 3.)
     bootes = bootes['Overall_class', 'SFR_cons', 'Mass_cons', 'z_best']
     bootes = hstack((lotz, bootes))
 
